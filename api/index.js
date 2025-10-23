@@ -6,9 +6,9 @@ import { put as blobPut } from "@vercel/blob";
 
 export const config = {
   api: {
-    bodyParser: false,      // we handle multipart ourselves
+    bodyParser: false,   // we handle multipart ourselves
   },
-  runtime: "nodejs20.x",    // ensure Node runtime (not edge)
+  runtime: "nodejs",     // ✅ Vercel-supported value
   maxDuration: 30,
 };
 
