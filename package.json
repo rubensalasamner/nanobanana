@@ -1,0 +1,22 @@
+{
+  "name": "nanobanan-kiosk",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@google/genai": "^1.26.0",
+    "@vercel/blob": "^0.24.0",
+    "dotenv": "^17.2.3",
+    "express": "^4.19.2",
+    "multer": "^1.4.5-lts.1",
+    "nanoid": "^5.1.6",
+    "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "vercel": "^39.0.0"
+  }
+}

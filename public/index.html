@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Nano Banana Kiosk</title>
+  <link rel="stylesheet" href="./styles.css"/>
+</head>
+<body>
+  <div class="wrap">
+    <!-- Left: Camera -->
+    <section class="card">
+      <div class="bar">
+        <h2>📷 Camera</h2>
+        <div class="row">
+          <button id="btnStart" class="primary">Start camera</button>
+          <button id="btnSnap" disabled>Take picture</button>
+          <button id="btnRetake" class="ghost hidden">Retake</button>
+        </div>
+      </div>
+      <div class="stage">
+        <video id="video" playsinline autoplay muted class="hidden"></video>
+        <canvas id="canvas" class="hidden"></canvas>
+        <img id="photo" alt="snapshot" class="hidden"/>
+      </div>
+      <p class="status" id="camStatus">Camera is idle.</p>
+    </section>
+
+    <!-- Right: Presets -->
+    <section class="card">
+      <h2>🎛️ Presets</h2>
+      <div class="grid" id="presetGrid">
+        <button class="chip" data-prompt="make me a king with a royal crown, ornate robe, golden lighting">👑 Make me a king</button>
+        <button class="chip" data-prompt="place me on a sunny beach with palm trees, soft golden hour light">🏖️ On the beach</button>
+        <button class="chip" data-prompt="turn me into a watercolor painting, soft edges, pastel palette">🎨 Watercolor</button>
+        <button class="chip" data-prompt="make me a cyberpunk character with neon lights and futuristic city background">⚡ Cyberpunk</button>
+        <button class="chip" data-prompt="turn my outfit into a tuxedo, studio portrait lighting">🤵 Tuxedo</button>
+        <button class="chip" data-prompt="add a Viking helmet and cloak, dramatic Nordic sky">🛡️ Viking</button>
+      </div>
+
+      <div class="row mt">
+        <button id="btnApply" class="primary" disabled>Apply preset</button>
+        <button id="btnDownload" disabled>Download result</button>
+      </div>
+      <p class="status" id="apiStatus">Take a picture, pick a preset, then apply.</p>
+      <div class="row mt">
+        <img id="qr" class="hidden" alt="QR code to your photo"/>
+        </div>
+        <div class="row mt">
+        <button id="btnCopy" class="ghost hidden">Copy link</button>
+        <a id="btnOpen" class="ghost hidden" target="_blank" rel="noopener">Open link</a>
+       </div>
+      <div class="hint">Tip: Works with touch <em>and</em> mouse clicks. On desktop, press <kbd>Space</kbd> to snap.</div>
+    </section>
+  </div>
+
+  <script src="./app.js" type="module"></script>
+</body>
+</html>
