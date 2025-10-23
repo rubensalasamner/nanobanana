@@ -2,7 +2,7 @@ import Busboy from "busboy";
 import { GoogleGenAI } from "@google/genai";
 import QRCode from "qrcode";
 import { nanoid } from "nanoid";
-import { put as blobPut } from "@vercel/blob";
+import { put as blobPut, get as blobGet, list as blobList, del as blobDel } from "@vercel/blob";
 
 export const config = {
   api: {
@@ -15,6 +15,14 @@ export const config = {
 /** ===== Utilities ===== */
 const UPLOAD_TARGET = (process.env.UPLOAD_TARGET || "dataurl").toLowerCase(); // 'blob' | 'dataurl'
 const MAX_UPLOAD_BYTES = 4.3 * 1024 * 1024; // guard for serverless limits
+
+
+const { url } = await blobPut(`shares/${id}.${ext}`, outImg.buf, {
+  access: "public",
+  contentType: outImg.mime,
+  addRandomSuffix: false,
+  token: process.env.BLOB_READ_WRITE_TOKEN,   // 👈 important
+});
 
 function log(reqId, level, msg, meta = {}) {
   const entry = { ts: new Date().toISOString(), reqId, level, msg, ...meta };
