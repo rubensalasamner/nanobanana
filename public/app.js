@@ -1,7 +1,7 @@
 // ----- DOM -----
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
-const photo  = document.getElementById('photo');
+const photo = document.getElementById('photo');
 const camStatus = document.getElementById('camStatus');
 const apiStatus = document.getElementById('apiStatus');
 
@@ -17,13 +17,19 @@ let stream = null;
 let selectedPrompt = null;
 let latestBlob = null;
 
+setInterval(() => fetch('/api/cleanup').catch(() => {}), 60 * 60 * 1000);
+
 // ----- Helpers: onTap = works for touch + mouse + pen -----
 function onTap(el, handler) {
   // guard against double firing
   let armed = false;
   el.addEventListener('pointerdown', () => (armed = true), { passive: true });
   el.addEventListener('pointercancel', () => (armed = false));
-  el.addEventListener('pointerup', (e) => { if (!armed) return; armed = false; handler(e); });
+  el.addEventListener('pointerup', (e) => {
+    if (!armed) return;
+    armed = false;
+    handler(e);
+  });
   // fallback
   el.addEventListener('click', handler);
 }
@@ -31,8 +37,11 @@ function onTap(el, handler) {
 // ----- Camera controls -----
 async function startCamera() {
   try {
-    if (stream) stream.getTracks().forEach(t => t.stop());
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false });
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user' },
+      audio: false,
+    });
     video.srcObject = stream;
     video.classList.remove('hidden');
     canvas.classList.add('hidden');
@@ -46,14 +55,27 @@ async function startCamera() {
 }
 
 function takeSnapshot() {
-  const w = video.videoWidth, h = video.videoHeight;
-  if (!w || !h) { camStatus.textContent = 'Camera not ready yet…'; return; }
-  canvas.width = w; canvas.height = h;
+  const w = video.videoWidth,
+    h = video.videoHeight;
+  if (!w || !h) {
+    camStatus.textContent = 'Camera not ready yet…';
+    return;
+  }
+  canvas.width = w;
+  canvas.height = h;
   const ctx = canvas.getContext('2d');
   ctx.drawImage(video, 0, 0, w, h);
-  canvas.toBlob(b => { latestBlob = b; }, 'image/jpeg', 0.95);
+  canvas.toBlob(
+    (b) => {
+      latestBlob = b;
+    },
+    'image/jpeg',
+    0.95
+  );
   photo.src = canvas.toDataURL('image/jpeg', 0.95);
-  video.classList.add('hidden'); canvas.classList.add('hidden'); photo.classList.remove('hidden');
+  video.classList.add('hidden');
+  canvas.classList.add('hidden');
+  photo.classList.remove('hidden');
   btnRetake.classList.remove('hidden');
   btnApply.disabled = !selectedPrompt;
   camStatus.textContent = 'Snapshot captured.';
@@ -89,7 +111,8 @@ async function callImageEditAPI(imageBlob, prompt) {
 
 async function applyPreset() {
   if (!latestBlob || !selectedPrompt) {
-    apiStatus.textContent = 'Take a picture and select a preset first.'; return;
+    apiStatus.textContent = 'Take a picture and select a preset first.';
+    return;
   }
   btnApply.disabled = true;
   apiStatus.textContent = 'Applying preset…';
@@ -153,9 +176,11 @@ grid.addEventListener('click', handlePresetTap); // fallback
 
 // ----- Desktop testing shortcuts (optional) -----
 document.addEventListener('keydown', (e) => {
-  if (e.code === 'Space') { e.preventDefault(); if (!btnSnap.disabled) takeSnapshot(); }
+  if (e.code === 'Space') {
+    e.preventDefault();
+    if (!btnSnap.disabled) takeSnapshot();
+  }
 });
-
 
 const qrImg = document.getElementById('qr');
 const btnCopy = document.getElementById('btnCopy');
