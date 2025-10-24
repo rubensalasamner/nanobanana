@@ -39,6 +39,7 @@
             </button>
           </div>
         </div>
+
         <div class="stage">
           <video
             id="video"
@@ -57,6 +58,7 @@
             class="hidden"
           />
         </div>
+
         <p
           class="status"
           id="camStatus"
@@ -68,6 +70,7 @@
       <!-- Right: Presets -->
       <section class="card">
         <h2>🎛️ Presets</h2>
+
         <div
           class="grid"
           id="presetGrid"
@@ -88,7 +91,7 @@
             1980’s Yearbook
           </button>
 
-          <!-- Polaroid (single-person version). If you want two people together, see the alternate below. -->
+          <!-- Polaroid -->
           <button
             class="chip"
             data-prompt="Use the uploaded webcam photo as the only reference image. Generate a 4K ultra-realistic instant-camera (Polaroid-style) photo of this person. Preserve facial features exactly. Add gentle motion blur and flash-like lighting. Use a soft white curtain backdrop. Natural, candid snapshot vibe. No added text. Single subject only."
@@ -96,21 +99,15 @@
             Polaroid
           </button>
 
-          <!-- (Optional) Polaroid with two people: requires TWO reference photos captured in your flow.
-<button class="chip" data-prompt="Use the two most recent uploaded reference photos. Generate a Polaroid-style photo showing both people together, preserving each face exactly. Soft white curtain backdrop, slight blur, single flash-like light source, candid moment (hugging or laughing). No added text.">
-  Polaroid (2 people)
-</button> -->
-
-          <!-- Hair Style Change (single-person, controlled edit) -->
+          <!-- Hair Style Change -->
           <button
             class="chip"
-            data-prompt="Use the uploaded webcam photo as the only reference image. Show what this person would look like with [color/style] hair. Change only hair color, length, texture, and style as specified. Keep the same face, skin tone, and lighting. Do not modify age or body. No added text."
+            data-prompt="Use the uploaded webcam photo as the only reference image. Show what this person would look like with medium-length chestnut brown hair. Change only hair color, length, texture, and style as specified. Keep the same face, skin tone, and lighting. Do not modify age or body. No added text."
           >
             Hair Style Change
           </button>
 
-          <!-- Hugging Younger Self (works with one selfie by duplicating subject).
-     If you prefer two distinct inputs (older photo + newer photo), see the alternate. -->
+          <!-- Hugging Younger Self -->
           <button
             class="chip"
             data-prompt="Use the uploaded webcam photo as the only reference image. Create a Polaroid-style photo where this person appears twice: an ‘older self’ and a ‘younger self’ hugging, both facing the camera. Preserve the same identity for both subjects. Adjust hair/outfit subtly to imply age difference while keeping natural skin tones. White curtain background, slight blur, flash-like lighting. No added text."
@@ -118,20 +115,7 @@
             Hugging Younger Self
           </button>
 
-          <!-- (Optional) Alternate requiring TWO reference photos:
-<button class="chip" data-prompt="Use the two most recent uploaded reference photos of the same person (older vs younger). Generate a Polaroid-style photo where the older self hugs the younger self, both facing the camera. Preserve identity in both. White curtain background, slight blur, flash-like lighting. No added text.">
-  Hugging Younger Self (2 refs)
-</button> -->
-
-          <!-- Professional Headshot (single-person, LinkedIn) -->
-          <button
-            class="chip"
-            data-prompt="Use the uploaded webcam photo as the only reference image. Transform it into a high-quality LinkedIn headshot. Preserve the person’s natural features (eyes, hair, skin tone) with true-to-life color and smooth, even lighting. Dress the subject in modern, polished but approachable attire (e.g., smart casual; avoid logos). Use a clean, neutral cityscape background with shallow depth of field to keep focus on the subject. Tight framing on head and upper shoulders. Sharp, well-lit, confident, and natural. No added text."
-          >
-            Professional Headshot
-          </button>
-
-          <!-- Photo to Painting (single-person, styled output) -->
+          <!-- Photo to Painting (concrete values, no placeholders) -->
           <button
             class="chip"
             data-prompt="Use the uploaded webcam photo as the only reference image.
@@ -158,12 +142,14 @@ Maintain accurate facial likeness and identity. No added text or signatures."
             Download result
           </button>
         </div>
+
         <p
           class="status"
           id="apiStatus"
         >
           Take a picture, pick a preset, then apply.
         </p>
+
         <div class="row mt">
           <img
             id="qr"
@@ -171,6 +157,7 @@ Maintain accurate facial likeness and identity. No added text or signatures."
             alt="QR code to your photo"
           />
         </div>
+
         <div class="row mt">
           <button
             id="btnCopy"
@@ -187,6 +174,7 @@ Maintain accurate facial likeness and identity. No added text or signatures."
             Open link
           </a>
         </div>
+
         <div class="hint">
           Tip: Works with touch
           <em>and</em>

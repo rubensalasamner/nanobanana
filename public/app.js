@@ -12,16 +12,21 @@ const btnApply = document.getElementById('btnApply');
 const btnDownload = document.getElementById('btnDownload');
 const grid = document.getElementById('presetGrid');
 
+const qrImg = document.getElementById('qr');
+const btnCopy = document.getElementById('btnCopy');
+const btnOpen = document.getElementById('btnOpen');
+
 // ----- State -----
 let stream = null;
 let selectedPrompt = null;
-let latestBlob = null;
+let latestBlob = null; // downscaled upload
+let latestShare = null; // { imageUrl, shareUrl, qrDataUrl }
 
+// Hourly cleanup ping (hits Vercel serverless /api/cleanup)
 setInterval(() => fetch('/api/cleanup').catch(() => {}), 60 * 60 * 1000);
 
-// ----- Helpers: onTap = works for touch + mouse + pen -----
+// ----- Helpers: unified tap/click handler -----
 function onTap(el, handler) {
-  // guard against double firing
   let armed = false;
   el.addEventListener('pointerdown', () => (armed = true), { passive: true });
   el.addEventListener('pointercancel', () => (armed = false));
@@ -30,7 +35,6 @@ function onTap(el, handler) {
     armed = false;
     handler(e);
   });
-  // fallback
   el.addEventListener('click', handler);
 }
 
@@ -39,7 +43,11 @@ async function startCamera() {
   try {
     if (stream) stream.getTracks().forEach((t) => t.stop());
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user' },
+      video: {
+        facingMode: 'user',
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
       audio: false,
     });
     video.srcObject = stream;
@@ -55,24 +63,46 @@ async function startCamera() {
 }
 
 function takeSnapshot() {
-  const w = video.videoWidth,
-    h = video.videoHeight;
-  if (!w || !h) {
+  const vw = video.videoWidth,
+    vh = video.videoHeight;
+  if (!vw || !vh) {
     camStatus.textContent = 'Camera not ready yet…';
     return;
   }
-  canvas.width = w;
-  canvas.height = h;
+
+  // Crisp on-screen preview using device pixel ratio
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(vw * dpr);
+  canvas.height = Math.round(vh * dpr);
+  canvas.style.width = `${vw}px`;
+  canvas.style.height = `${vh}px`;
+
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, w, h);
-  canvas.toBlob(
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.drawImage(video, 0, 0, vw, vh);
+
+  // Downscale for upload (keep file small)
+  const MAX = 1600; // long edge
+  const scale = Math.min(1, MAX / Math.max(vw, vh));
+  const upW = Math.round(vw * scale);
+  const upH = Math.round(vh * scale);
+
+  const tmp = document.createElement('canvas');
+  tmp.width = upW;
+  tmp.height = upH;
+  const tctx = tmp.getContext('2d');
+  tctx.drawImage(video, 0, 0, upW, upH);
+
+  tmp.toBlob(
     (b) => {
       latestBlob = b;
     },
     'image/jpeg',
-    0.95
+    0.85
   );
-  photo.src = canvas.toDataURL('image/jpeg', 0.95);
+
+  // Big, clean preview in the UI
+  photo.src = canvas.toDataURL('image/jpeg', 0.9);
   video.classList.add('hidden');
   canvas.classList.add('hidden');
   photo.classList.remove('hidden');
@@ -88,7 +118,7 @@ function retake() {
   camStatus.textContent = 'Ready to retake.';
 }
 
-// ----- Presets (supports touch & click) -----
+// ----- Presets (touch & click) -----
 function handlePresetTap(e) {
   const btn = e.target.closest('[data-prompt]');
   if (!btn) return;
@@ -96,17 +126,17 @@ function handlePresetTap(e) {
   btn.style.outline = '3px solid var(--accent)';
   selectedPrompt = btn.dataset.prompt;
   btnApply.disabled = !latestBlob;
-  apiStatus.textContent = 'Selected: ' + selectedPrompt;
+  apiStatus.textContent = 'Selected: ' + (selectedPrompt.split('\n')[0] || 'preset');
 }
 
-// ----- API call -----
-async function callImageEditAPI(imageBlob, prompt) {
+// ----- API calls -----
+async function callImageEditAndShareAPI(imageBlob, prompt) {
   const form = new FormData();
   form.append('image', imageBlob, 'photo.jpg');
   form.append('prompt', prompt);
-  const res = await fetch('/api/edit', { method: 'POST', body: form });
+  const res = await fetch('/api/edit-and-share', { method: 'POST', body: form });
   if (!res.ok) throw new Error('API ' + res.status);
-  return await res.blob();
+  return await res.json();
 }
 
 async function applyPreset() {
@@ -118,21 +148,21 @@ async function applyPreset() {
   apiStatus.textContent = 'Applying preset…';
   try {
     const out = await callImageEditAndShareAPI(latestBlob, selectedPrompt);
-    // Show the edited image from the hosted URL (so QR is exactly the same asset)
-    photo.src = out.imageUrl;
 
+    // Show edited image from hosted URL (exact file that QR points to)
+    photo.src = out.imageUrl;
     latestShare = out;
 
-    // Enable download of the exact hosted file
+    // Enable download
     btnDownload.disabled = false;
     btnDownload.onclick = () => {
       const a = document.createElement('a');
       a.href = out.imageUrl;
-      a.download = 'booth.jpg';
+      a.download = 'booth.webp';
       a.click();
     };
 
-    // Show QR + link helpers
+    // QR + helpers
     qrImg.src = out.qrDataUrl;
     qrImg.classList.remove('hidden');
 
@@ -157,16 +187,7 @@ async function applyPreset() {
   }
 }
 
-async function callImageEditAndShareAPI(imageBlob, prompt) {
-  const form = new FormData();
-  form.append('image', imageBlob, 'photo.jpg');
-  form.append('prompt', prompt);
-  const res = await fetch('/api/edit-and-share', { method: 'POST', body: form });
-  if (!res.ok) throw new Error('API ' + res.status);
-  return await res.json();
-}
-
-// ----- Bind events (touch + click) -----
+// ----- Bind events -----
 onTap(btnStart, startCamera);
 onTap(btnSnap, takeSnapshot);
 onTap(btnRetake, retake);
@@ -174,16 +195,10 @@ onTap(btnApply, applyPreset);
 grid.addEventListener('pointerup', handlePresetTap);
 grid.addEventListener('click', handlePresetTap); // fallback
 
-// ----- Desktop testing shortcuts (optional) -----
+// ----- Desktop shortcut -----
 document.addEventListener('keydown', (e) => {
   if (e.code === 'Space') {
     e.preventDefault();
     if (!btnSnap.disabled) takeSnapshot();
   }
 });
-
-const qrImg = document.getElementById('qr');
-const btnCopy = document.getElementById('btnCopy');
-const btnOpen = document.getElementById('btnOpen');
-
-let latestShare = null; // { imageUrl, shareUrl, qrDataUrl }
