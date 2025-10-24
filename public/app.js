@@ -80,7 +80,6 @@ async function startCamera() {
     if (Number.isFinite(ar) && ar > 0) {
       stage.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
     }
-
     // responsive media
     video.style.width = '100%';
     canvas.style.width = '100%';

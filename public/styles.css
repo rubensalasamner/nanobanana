@@ -87,10 +87,16 @@ button.ghost {
 .stage {
   margin-top: 12px;
   position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 100%;
+  max-width: 960px; /* tweak for your layout */
+  aspect-ratio: 16 / 9; /* default; JS will overwrite with real camera AR */
+  background: #000;
+  border-radius: 12px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
 }
+
 video,
 canvas,
 img {
@@ -132,13 +138,12 @@ img {
 .stage video,
 .stage canvas,
 .stage img {
-  width: min(92vw, 900px);
-  height: auto;
-  border-radius: 12px;
+  width: 100%;
+  height: 100%; /* <— important for object-fit to work */
+  object-fit: cover; /* fill container; may crop a bit */
+  border-radius: 0; /* stage already has rounded corners */
   background: #000;
-  object-fit: contain;
 }
-
 #countdown {
   position: absolute;
   inset: 0;
