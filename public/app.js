@@ -16,6 +16,11 @@ const qrImg = document.getElementById('qr');
 const btnCopy = document.getElementById('btnCopy');
 const btnOpen = document.getElementById('btnOpen');
 
+// NEW: countdown overlay + spinner elements
+const countdown = document.getElementById('countdown');
+const applyText = document.getElementById('applyText');
+const applySpinner = document.getElementById('applySpinner');
+
 // ----- State -----
 let stream = null;
 let selectedPrompt = null;
@@ -25,7 +30,7 @@ let latestShare = null; // { imageUrl, shareUrl, qrDataUrl }
 // Hourly cleanup ping (hits Vercel serverless /api/cleanup)
 setInterval(() => fetch('/api/cleanup').catch(() => {}), 60 * 60 * 1000);
 
-// ----- Helpers: unified tap/click handler -----
+// ----- Helpers -----
 function onTap(el, handler) {
   let armed = false;
   el.addEventListener('pointerdown', () => (armed = true), { passive: true });
@@ -36,6 +41,20 @@ function onTap(el, handler) {
     handler(e);
   });
   el.addEventListener('click', handler);
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// 3–2–1 countdown overlay
+async function runCountdown(n = 3) {
+  countdown.classList.remove('hidden');
+  for (let i = n; i >= 1; i--) {
+    countdown.textContent = i;
+    await sleep(700);
+  }
+  countdown.textContent = '';
+  await sleep(120);
+  countdown.classList.add('hidden');
 }
 
 // ----- Camera controls -----
@@ -52,18 +71,40 @@ async function startCamera() {
       audio: false,
     });
     video.srcObject = stream;
+
+    // wait for dimensions
+    await new Promise((res) => (video.onloadedmetadata = res));
+
+    const stage = document.querySelector('.stage');
+    const ar = video.videoWidth / video.videoHeight;
+    if (Number.isFinite(ar) && ar > 0) {
+      stage.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+    }
+
+    // responsive media
+    video.style.width = '100%';
+    canvas.style.width = '100%';
+    photo.style.width = '100%';
+
     video.classList.remove('hidden');
     canvas.classList.add('hidden');
     photo.classList.add('hidden');
     btnSnap.disabled = false;
     btnRetake.classList.add('hidden');
+
+    // NEW: disable (or hide) Start after running
+    btnStart.disabled = true;
+    // If you prefer to fully hide it, uncomment:
+    // btnStart.classList.add('hidden');
+
     camStatus.textContent = 'Camera is running. Tap “Take picture”.';
   } catch (e) {
     camStatus.textContent = 'Camera error: ' + e.message;
   }
 }
 
-function takeSnapshot() {
+// Now async so we can await the countdown
+async function takeSnapshot() {
   const vw = video.videoWidth,
     vh = video.videoHeight;
   if (!vw || !vh) {
@@ -71,18 +112,21 @@ function takeSnapshot() {
     return;
   }
 
-  // Crisp on-screen preview using device pixel ratio
+  // NEW: 3–2–1 overlay before capture
+  await runCountdown(3);
+
+  // High-DPI preview
   const dpr = window.devicePixelRatio || 1;
   canvas.width = Math.round(vw * dpr);
   canvas.height = Math.round(vh * dpr);
-  canvas.style.width = `${vw}px`;
-  canvas.style.height = `${vh}px`;
+  canvas.style.width = '100%';
+  canvas.style.height = 'auto';
 
   const ctx = canvas.getContext('2d');
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.drawImage(video, 0, 0, vw, vh);
 
-  // Downscale for upload (keep file small)
+  // Downscale for upload
   const MAX = 1600; // long edge
   const scale = Math.min(1, MAX / Math.max(vw, vh));
   const upW = Math.round(vw * scale);
@@ -91,9 +135,7 @@ function takeSnapshot() {
   const tmp = document.createElement('canvas');
   tmp.width = upW;
   tmp.height = upH;
-  const tctx = tmp.getContext('2d');
-  tctx.drawImage(video, 0, 0, upW, upH);
-
+  tmp.getContext('2d').drawImage(video, 0, 0, upW, upH);
   tmp.toBlob(
     (b) => {
       latestBlob = b;
@@ -102,7 +144,7 @@ function takeSnapshot() {
     0.85
   );
 
-  // Big, clean preview in the UI
+  // Preview in UI
   photo.src = canvas.toDataURL('image/jpeg', 0.9);
   video.classList.add('hidden');
   canvas.classList.add('hidden');
@@ -119,7 +161,7 @@ function retake() {
   camStatus.textContent = 'Ready to retake.';
 }
 
-// ----- Presets (touch & click) -----
+// ----- Presets -----
 function handlePresetTap(e) {
   const btn = e.target.closest('[data-prompt]');
   if (!btn) return;
@@ -145,16 +187,19 @@ async function applyPreset() {
     apiStatus.textContent = 'Take a picture and select a preset first.';
     return;
   }
+
+  // NEW: spinner on button
   btnApply.disabled = true;
+  applyText.textContent = 'Applying…';
+  applySpinner.classList.remove('hidden');
+
   apiStatus.textContent = 'Applying preset…';
   try {
     const out = await callImageEditAndShareAPI(latestBlob, selectedPrompt);
 
-    // Show edited image from hosted URL (exact file that QR points to)
     photo.src = out.imageUrl;
     latestShare = out;
 
-    // Enable download
     btnDownload.disabled = false;
     btnDownload.onclick = () => {
       const a = document.createElement('a');
@@ -163,7 +208,6 @@ async function applyPreset() {
       a.click();
     };
 
-    // QR + helpers
     qrImg.src = out.qrDataUrl;
     qrImg.classList.remove('hidden');
 
@@ -184,6 +228,9 @@ async function applyPreset() {
   } catch (err) {
     apiStatus.textContent = 'Failed: ' + err.message + ' (check server logs)';
   } finally {
+    // NEW: stop spinner
+    applySpinner.classList.add('hidden');
+    applyText.textContent = 'Apply preset';
     btnApply.disabled = false;
   }
 }
@@ -194,7 +241,7 @@ onTap(btnSnap, takeSnapshot);
 onTap(btnRetake, retake);
 onTap(btnApply, applyPreset);
 grid.addEventListener('pointerup', handlePresetTap);
-grid.addEventListener('click', handlePresetTap); // fallback
+grid.addEventListener('click', handlePresetTap);
 
 // ----- Desktop shortcut -----
 document.addEventListener('keydown', (e) => {

@@ -87,6 +87,9 @@ button.ghost {
 .stage {
   margin-top: 12px;
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 video,
 canvas,
@@ -133,7 +136,7 @@ img {
   height: auto;
   border-radius: 12px;
   background: #000;
-  object-fit: cover;
+  object-fit: contain;
 }
 
 #countdown {
