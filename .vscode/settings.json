@@ -1,0 +1,21 @@
+{
+  "editor.formatOnSave": true,
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+
+  // make sure HTML goes through Prettier
+  "[html]": {
+    "editor.defaultFormatter": "rvest.vs-code-prettier-eslint"
+  },
+
+  // optional but helps avoid conflicts with VS Code's formatter
+  "html.format.enable": false,
+
+  // make sure ESLint doesn't try to format (we use it only for fixes)
+  "eslint.format.enable": false,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": true
+  },
+
+  // (optional) format the whole file on save, not just changed lines
+  "editor.formatOnSaveMode": "file"
+}

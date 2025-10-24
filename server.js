@@ -1,13 +1,14 @@
-import express from "express";
-import multer from "multer";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import dotenv from "dotenv";
-import { GoogleGenAI } from "@google/genai";
-import fs from "node:fs";
-import { promises as fsp } from "node:fs";
-import { nanoid } from "nanoid";
-import QRCode from "qrcode";
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import fs from 'node:fs';
+import { promises as fsp } from 'node:fs';
+
+import express from 'express';
+import multer from 'multer';
+import dotenv from 'dotenv';
+import { GoogleGenAI } from '@google/genai';
+import { nanoid } from 'nanoid';
+import QRCode from 'qrcode';
 
 dotenv.config();
 
@@ -15,28 +16,28 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-app.set("trust proxy", true);
+app.set('trust proxy', true);
 
 // --- directories ---
-const PUBLIC_DIR = path.join(__dirname, "public");
-const SHARES_DIR = path.join(PUBLIC_DIR, "shares");
+const PUBLIC_DIR = path.join(__dirname, 'public');
+const SHARES_DIR = path.join(PUBLIC_DIR, 'shares');
 fs.mkdirSync(SHARES_DIR, { recursive: true });
 
 // --- helpers ---
 function getOrigin(req) {
-  const proto = (req.headers["x-forwarded-proto"] || req.protocol || "http");
-  const host = req.headers["x-forwarded-host"] || req.get("host");
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+  const host = req.headers['x-forwarded-host'] || req.get('host');
   return `${proto}://${host}`;
 }
 function extFromMime(m) {
-  if (!m) return "jpg";
-  if (m === "image/jpeg" || m === "image/jpg") return "jpg";
-  if (m === "image/png") return "png";
-  if (m === "image/webp") return "webp";
-  return "jpg";
+  if (!m) return 'jpg';
+  if (m === 'image/jpeg' || m === 'image/jpg') return 'jpg';
+  if (m === 'image/png') return 'png';
+  if (m === 'image/webp') return 'webp';
+  return 'jpg';
 }
 function findExistingSharePath(id) {
-  for (const ext of ["jpg", "png", "webp"]) {
+  for (const ext of ['jpg', 'png', 'webp']) {
     const p = path.join(SHARES_DIR, `${id}.${ext}`);
     if (fs.existsSync(p)) return { path: p, ext };
   }
@@ -48,9 +49,9 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (!/^image\//.test(file.mimetype)) return cb(new Error("Only image uploads are allowed"));
+    if (!/^image\//.test(file.mimetype)) return cb(new Error('Only image uploads are allowed'));
     cb(null, true);
-  }
+  },
 });
 
 // --- basic request logger ---
@@ -63,25 +64,28 @@ app.use((req, _res, next) => {
 app.use(
   express.static(PUBLIC_DIR, {
     setHeaders: (res, filePath) => {
-      if (filePath.endsWith("index.html")) {
-        res.setHeader("Cache-Control", "no-store");
+      if (filePath.endsWith('index.html')) {
+        res.setHeader('Cache-Control', 'no-store');
       }
     },
   })
 );
 
 // Serve /shares with strong caching (filenames are content-addressed by id+ext)
-app.use("/shares", express.static(SHARES_DIR, {
-  setHeaders: (res) => res.setHeader("Cache-Control", "public, max-age=604800, immutable")
-}));
+app.use(
+  '/shares',
+  express.static(SHARES_DIR, {
+    setHeaders: (res) => res.setHeader('Cache-Control', 'public, max-age=604800, immutable'),
+  })
+);
 
 // --- health & diagnostics ---
-app.get("/healthz", (_req, res) => res.json({ ok: true }));
-app.get("/diag", (_req, res) => {
+app.get('/healthz', (_req, res) => res.json({ ok: true }));
+app.get('/diag', (_req, res) => {
   res.json({
     ok: true,
     hasKey: Boolean(process.env.GEMINI_API_KEY),
-    model: "gemini-2.5-flash-image"
+    model: 'gemini-2.5-flash-image',
   });
 });
 
@@ -95,9 +99,9 @@ function extractImagePart(resp) {
     const parts = c?.content?.parts || [];
     for (const p of parts) {
       if (p?.inlineData?.data) {
-        const mime = p.inlineData.mimeType || "image/png";
+        const mime = p.inlineData.mimeType || 'image/png';
         const b64 = p.inlineData.data;
-        return { mime, buffer: Buffer.from(b64, "base64") };
+        return { mime, buffer: Buffer.from(b64, 'base64') };
       }
     }
   }
@@ -105,67 +109,71 @@ function extractImagePart(resp) {
 }
 
 // --- /api/edit: returns the edited image binary directly ---
-app.post("/api/edit", upload.single("image"), async (req, res) => {
+app.post('/api/edit', upload.single('image'), async (req, res) => {
   try {
     if (!process.env.GEMINI_API_KEY) {
-      console.warn("GEMINI_API_KEY is missing");
-      return res.status(500).json({ error: "Missing GEMINI_API_KEY" });
+      console.warn('GEMINI_API_KEY is missing');
+      return res.status(500).json({ error: 'Missing GEMINI_API_KEY' });
     }
-    if (!req.file) return res.status(400).json({ error: "No image uploaded" });
+    if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
 
-    const prompt = String(req.body.prompt ?? "");
-    if (!prompt) return res.status(400).json({ error: "Missing prompt" });
+    const prompt = String(req.body.prompt ?? '');
+    if (!prompt) return res.status(400).json({ error: 'Missing prompt' });
 
-    const mimeType = req.file.mimetype || "image/jpeg";
-    const base64 = req.file.buffer.toString("base64");
+    const mimeType = req.file.mimetype || 'image/jpeg';
+    const base64 = req.file.buffer.toString('base64');
 
-    console.log(`Editing image (${mimeType}, ${req.file.buffer.length} bytes) with prompt: "${prompt}"`);
+    console.log(
+      `Editing image (${mimeType}, ${req.file.buffer.length} bytes) with prompt: "${prompt}"`
+    );
 
     const resp = await ai.models.generateContent({
-      model: "gemini-2.5-flash-image",
+      model: 'gemini-2.5-flash-image',
       contents: [{ text: prompt }, { inlineData: { mimeType, data: base64 } }],
     });
 
     const img = extractImagePart(resp);
     if (!img) {
       const parts = resp?.candidates?.[0]?.content?.parts || [];
-      const textMsg = parts.find(p => p?.text)?.text || "No image returned by model";
-      console.warn("No image in response. Message:", textMsg);
+      const textMsg = parts.find((p) => p?.text)?.text || 'No image returned by model';
+      console.warn('No image in response. Message:', textMsg);
       return res.status(422).json({ error: textMsg });
     }
 
-    res.set("Content-Type", img.mime.startsWith("image/") ? img.mime : "image/png").send(img.buffer);
+    res
+      .set('Content-Type', img.mime.startsWith('image/') ? img.mime : 'image/png')
+      .send(img.buffer);
   } catch (err) {
-    console.error("Gemini request failed:", err);
-    res.status(500).json({ error: "Gemini request failed", detail: String(err?.message || err) });
+    console.error('Gemini request failed:', err);
+    res.status(500).json({ error: 'Gemini request failed', detail: String(err?.message || err) });
   }
 });
 
 // --- /api/edit-and-share: edit, save to /shares, return urls + QR ---
-app.post("/api/edit-and-share", upload.single("image"), async (req, res) => {
+app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
   try {
     if (!process.env.GEMINI_API_KEY) {
-      return res.status(500).json({ error: "Missing GEMINI_API_KEY" });
+      return res.status(500).json({ error: 'Missing GEMINI_API_KEY' });
     }
-    if (!req.file) return res.status(400).json({ error: "No image uploaded" });
+    if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
 
-    const prompt = String(req.body.prompt ?? "");
-    if (!prompt) return res.status(400).json({ error: "Missing prompt" });
+    const prompt = String(req.body.prompt ?? '');
+    if (!prompt) return res.status(400).json({ error: 'Missing prompt' });
 
-    const mimeType = req.file.mimetype || "image/jpeg";
-    const base64 = req.file.buffer.toString("base64");
+    const mimeType = req.file.mimetype || 'image/jpeg';
+    const base64 = req.file.buffer.toString('base64');
 
     console.log(`Editing (and sharing) image with prompt: "${prompt}"`);
 
     const resp = await ai.models.generateContent({
-      model: "gemini-2.5-flash-image",
+      model: 'gemini-2.5-flash-image',
       contents: [{ text: prompt }, { inlineData: { mimeType, data: base64 } }],
     });
 
     const img = extractImagePart(resp);
     if (!img) {
       const parts = resp?.candidates?.[0]?.content?.parts || [];
-      const textMsg = parts.find(p => p?.text)?.text || "No image returned by model";
+      const textMsg = parts.find((p) => p?.text)?.text || 'No image returned by model';
       return res.status(422).json({ error: textMsg });
     }
 
@@ -182,21 +190,21 @@ app.post("/api/edit-and-share", upload.single("image"), async (req, res) => {
 
     res.json({ ok: true, id, imageUrl, shareUrl, qrDataUrl, mime: img.mime });
   } catch (err) {
-    console.error("edit-and-share failed:", err);
-    res.status(500).json({ error: "Gemini request failed", detail: String(err?.message || err) });
+    console.error('edit-and-share failed:', err);
+    res.status(500).json({ error: 'Gemini request failed', detail: String(err?.message || err) });
   }
 });
 
 // --- public share page ---
-app.get("/share/:id", async (req, res) => {
-  const id = req.params.id.replace(/[^a-zA-Z0-9_-]/g, "");
+app.get('/share/:id', async (req, res) => {
+  const id = req.params.id.replace(/[^a-zA-Z0-9_-]/g, '');
   const found = findExistingSharePath(id);
-  if (!found) return res.status(404).send("Not found");
+  if (!found) return res.status(404).send('Not found');
 
   const origin = getOrigin(req);
   const imageUrl = `${origin}/shares/${id}.${found.ext}`;
 
-  res.set("Cache-Control", "no-store").send(`
+  res.set('Cache-Control', 'no-store').send(`
 <!doctype html>
 <html lang="en">
 <head>
@@ -221,8 +229,8 @@ app.get("/share/:id", async (req, res) => {
     <a class="button" download="booth.${found.ext}" href="${imageUrl}">⬇️ Download</a>
     <a class="button" href="https://wa.me/?text=${encodeURIComponent(imageUrl)}" target="_blank" rel="noopener">🟢 WhatsApp</a>
     <a class="button" href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(imageUrl)}" target="_blank" rel="noopener">📘 Facebook</a>
-    <a class="button" href="https://x.com/intent/tweet?text=${encodeURIComponent("Snapped at the convention!")}&url=${encodeURIComponent(imageUrl)}" target="_blank" rel="noopener">𝕏 Tweet</a>
-    <a class="button" href="sms:?&body=${encodeURIComponent("My booth photo: " + imageUrl)}">📱 SMS</a>
+    <a class="button" href="https://x.com/intent/tweet?text=${encodeURIComponent('Snapped at the convention!')}&url=${encodeURIComponent(imageUrl)}" target="_blank" rel="noopener">𝕏 Tweet</a>
+    <a class="button" href="sms:?&body=${encodeURIComponent('My booth photo: ' + imageUrl)}">📱 SMS</a>
   </div>
 </body>
 </html>
@@ -231,24 +239,29 @@ app.get("/share/:id", async (req, res) => {
 
 // --- OPTIONAL: simple cleanup of old files (24h) ---
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
-setInterval(async () => {
-  try {
-    const files = await fsp.readdir(SHARES_DIR);
-    const now = Date.now();
-    await Promise.all(files.map(async f => {
-      if (!/\.(jpg|png|webp)$/i.test(f)) return;
-      const p = path.join(SHARES_DIR, f);
-      const st = await fsp.stat(p);
-      if (now - st.mtimeMs > MAX_AGE_MS) await fsp.unlink(p).catch(() => {});
-    }));
-  } catch (e) {
-    console.warn("Cleanup error:", e.message);
-  }
-}, 60 * 60 * 1000); // hourly
+setInterval(
+  async () => {
+    try {
+      const files = await fsp.readdir(SHARES_DIR);
+      const now = Date.now();
+      await Promise.all(
+        files.map(async (f) => {
+          if (!/\.(jpg|png|webp)$/i.test(f)) return;
+          const p = path.join(SHARES_DIR, f);
+          const st = await fsp.stat(p);
+          if (now - st.mtimeMs > MAX_AGE_MS) await fsp.unlink(p).catch(() => {});
+        })
+      );
+    } catch (e) {
+      console.warn('Cleanup error:', e.message);
+    }
+  },
+  60 * 60 * 1000
+); // hourly
 
 // --- SPA fallback LAST ---
-app.get("*", (_req, res) => {
-  res.sendFile(path.join(PUBLIC_DIR, "index.html"));
+app.get('*', (_req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
 // --- start ---

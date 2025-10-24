@@ -1,59 +1,122 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Nano Banana Kiosk</title>
-  <link rel="stylesheet" href="./styles.css"/>
-</head>
-<body>
-  <div class="wrap">
-    <!-- Left: Camera -->
-    <section class="card">
-      <div class="bar">
-        <h2>📷 Camera</h2>
-        <div class="row">
-          <button id="btnStart" class="primary">Start camera</button>
-          <button id="btnSnap" disabled>Take picture</button>
-          <button id="btnRetake" class="ghost hidden">Retake</button>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Nano Banana Kiosk</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="wrap">
+      <!-- Left: Camera -->
+      <section class="card">
+        <div class="bar">
+          <h2>📷 Camera</h2>
+          <div class="row">
+            <button id="btnStart" class="primary">Start camera</button>
+            <button id="btnSnap" disabled>Take picture</button>
+            <button id="btnRetake" class="ghost hidden">Retake</button>
+          </div>
         </div>
-      </div>
-      <div class="stage">
-        <video id="video" playsinline autoplay muted class="hidden"></video>
-        <canvas id="canvas" class="hidden"></canvas>
-        <img id="photo" alt="snapshot" class="hidden"/>
-      </div>
-      <p class="status" id="camStatus">Camera is idle.</p>
-    </section>
+        <div class="stage">
+          <video id="video" playsinline autoplay muted class="hidden"></video>
+          <canvas id="canvas" class="hidden"></canvas>
+          <img id="photo" alt="snapshot" class="hidden" />
+        </div>
+        <p class="status" id="camStatus">Camera is idle.</p>
+      </section>
 
-    <!-- Right: Presets -->
-    <section class="card">
-      <h2>🎛️ Presets</h2>
-      <div class="grid" id="presetGrid">
-        <button class="chip" data-prompt="make me a king with a royal crown, ornate robe, golden lighting">👑 Make me a king</button>
-        <button class="chip" data-prompt="place me on a sunny beach with palm trees, soft golden hour light">🏖️ On the beach</button>
-        <button class="chip" data-prompt="turn me into a watercolor painting, soft edges, pastel palette">🎨 Watercolor</button>
-        <button class="chip" data-prompt="make me a cyberpunk character with neon lights and futuristic city background">⚡ Cyberpunk</button>
-        <button class="chip" data-prompt="turn my outfit into a tuxedo, studio portrait lighting">🤵 Tuxedo</button>
-        <button class="chip" data-prompt="add a Viking helmet and cloak, dramatic Nordic sky">🛡️ Viking</button>
-      </div>
+      <!-- Right: Presets -->
+      <section class="card">
+        <h2>🎛️ Presets</h2>
+        <div class="grid" id="presetGrid">
+          <!-- 3D Figurine (single-person safe) -->
+          <button
+            class="chip"
+            data-prompt="Use the uploaded webcam photo as the only reference image. Create a 1/7-scale commercial figurine of the person in the photo, realistic style, in a real environment. Place the figurine on a computer desk with a round transparent acrylic base. Put Light Green text on the base with the person’s name only if text is already present in the original image; otherwise avoid adding any text. Show a computer screen displaying the figurine’s 3D modeling process and a nearby toy packaging box that uses two-dimensional flat illustrations based on the same person. Keep facial likeness accurate. Do not add extra people. Avoid watermarks or captions."
+          >
+            👑 Make me a 3D Figurine
+          </button>
 
-      <div class="row mt">
-        <button id="btnApply" class="primary" disabled>Apply preset</button>
-        <button id="btnDownload" disabled>Download result</button>
-      </div>
-      <p class="status" id="apiStatus">Take a picture, pick a preset, then apply.</p>
-      <div class="row mt">
-        <img id="qr" class="hidden" alt="QR code to your photo"/>
+          <!-- 1980s Yearbook (single-person, identity preserved) -->
+          <button
+            class="chip"
+            data-prompt="Use the uploaded webcam photo as the only reference image. Generate a 1980s yearbook portrait of this person. Preserve the exact face and identity. You may change background, hairstyle, facial hair, glasses, outfit, and lighting to fit 1980s ‘glamour shots’ aesthetics (big hair, mullets, large glasses, soft/foggy lighting, fun backdrops). No added text or watermarks. Single subject only."
+          >
+            1980’s Yearbook
+          </button>
+
+          <!-- Polaroid (single-person version). If you want two people together, see the alternate below. -->
+          <button
+            class="chip"
+            data-prompt="Use the uploaded webcam photo as the only reference image. Generate a 4K ultra-realistic instant-camera (Polaroid-style) photo of this person. Preserve facial features exactly. Add gentle motion blur and flash-like lighting. Use a soft white curtain backdrop. Natural, candid snapshot vibe. No added text. Single subject only."
+          >
+            Polaroid
+          </button>
+
+          <!-- (Optional) Polaroid with two people: requires TWO reference photos captured in your flow.
+<button class="chip" data-prompt="Use the two most recent uploaded reference photos. Generate a Polaroid-style photo showing both people together, preserving each face exactly. Soft white curtain backdrop, slight blur, single flash-like light source, candid moment (hugging or laughing). No added text.">
+  Polaroid (2 people)
+</button> -->
+
+          <!-- Hair Style Change (single-person, controlled edit) -->
+          <button
+            class="chip"
+            data-prompt="Use the uploaded webcam photo as the only reference image. Show what this person would look like with [color/style] hair. Change only hair color, length, texture, and style as specified. Keep the same face, skin tone, and lighting. Do not modify age or body. No added text."
+          >
+            Hair Style Change
+          </button>
+
+          <!-- Hugging Younger Self (works with one selfie by duplicating subject).
+     If you prefer two distinct inputs (older photo + newer photo), see the alternate. -->
+          <button
+            class="chip"
+            data-prompt="Use the uploaded webcam photo as the only reference image. Create a Polaroid-style photo where this person appears twice: an ‘older self’ and a ‘younger self’ hugging, both facing the camera. Preserve the same identity for both subjects. Adjust hair/outfit subtly to imply age difference while keeping natural skin tones. White curtain background, slight blur, flash-like lighting. No added text."
+          >
+            Hugging Younger Self
+          </button>
+
+          <!-- (Optional) Alternate requiring TWO reference photos:
+<button class="chip" data-prompt="Use the two most recent uploaded reference photos of the same person (older vs younger). Generate a Polaroid-style photo where the older self hugs the younger self, both facing the camera. Preserve identity in both. White curtain background, slight blur, flash-like lighting. No added text.">
+  Hugging Younger Self (2 refs)
+</button> -->
+
+          <!-- Professional Headshot (single-person, LinkedIn) -->
+          <button
+            class="chip"
+            data-prompt="Use the uploaded webcam photo as the only reference image. Transform it into a high-quality LinkedIn headshot. Preserve the person’s natural features (eyes, hair, skin tone) with true-to-life color and smooth, even lighting. Dress the subject in modern, polished but approachable attire (e.g., smart casual; avoid logos). Use a clean, neutral cityscape background with shallow depth of field to keep focus on the subject. Tight framing on head and upper shoulders. Sharp, well-lit, confident, and natural. No added text."
+          >
+            Professional Headshot
+          </button>
+
+          <!-- Photo to Painting (single-person, styled output) -->
+          <button
+            class="chip"
+            data-prompt="Use the uploaded webcam photo as the only reference image. Reimagine this portrait as a [style] artwork set in the [time period]. Present the final as a photographed framed artwork in a [color, description] frame. Maintain accurate facial likeness and identity. No added text or signatures."
+          >
+            Photo to Painting
+          </button>
+        </div>
+
+        <div class="row mt">
+          <button id="btnApply" class="primary" disabled>Apply preset</button>
+          <button id="btnDownload" disabled>Download result</button>
+        </div>
+        <p class="status" id="apiStatus">Take a picture, pick a preset, then apply.</p>
+        <div class="row mt">
+          <img id="qr" class="hidden" alt="QR code to your photo" />
         </div>
         <div class="row mt">
-        <button id="btnCopy" class="ghost hidden">Copy link</button>
-        <a id="btnOpen" class="ghost hidden" target="_blank" rel="noopener">Open link</a>
-       </div>
-      <div class="hint">Tip: Works with touch <em>and</em> mouse clicks. On desktop, press <kbd>Space</kbd> to snap.</div>
-    </section>
-  </div>
+          <button id="btnCopy" class="ghost hidden">Copy link</button>
+          <a id="btnOpen" class="ghost hidden" target="_blank" rel="noopener">Open link</a>
+        </div>
+        <div class="hint">
+          Tip: Works with touch <em>and</em> mouse clicks. On desktop, press <kbd>Space</kbd> to
+          snap.
+        </div>
+      </section>
+    </div>
 
-  <script src="./app.js" type="module"></script>
-</body>
+    <script src="./app.js" type="module"></script>
+  </body>
 </html>
