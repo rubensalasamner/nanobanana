@@ -4,7 +4,7 @@
 
   // make sure HTML goes through Prettier
   "[html]": {
-    "editor.defaultFormatter": "rvest.vs-code-prettier-eslint"
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
 
   // optional but helps avoid conflicts with VS Code's formatter

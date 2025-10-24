@@ -2,9 +2,15 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    />
     <title>Nano Banana Kiosk</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link
+      rel="stylesheet"
+      href="./styles.css"
+    />
   </head>
   <body>
     <div class="wrap">
@@ -13,23 +19,59 @@
         <div class="bar">
           <h2>📷 Camera</h2>
           <div class="row">
-            <button id="btnStart" class="primary">Start camera</button>
-            <button id="btnSnap" disabled>Take picture</button>
-            <button id="btnRetake" class="ghost hidden">Retake</button>
+            <button
+              id="btnStart"
+              class="primary"
+            >
+              Start camera
+            </button>
+            <button
+              id="btnSnap"
+              disabled
+            >
+              Take picture
+            </button>
+            <button
+              id="btnRetake"
+              class="ghost hidden"
+            >
+              Retake
+            </button>
           </div>
         </div>
         <div class="stage">
-          <video id="video" playsinline autoplay muted class="hidden"></video>
-          <canvas id="canvas" class="hidden"></canvas>
-          <img id="photo" alt="snapshot" class="hidden" />
+          <video
+            id="video"
+            playsinline
+            autoplay
+            muted
+            class="hidden"
+          ></video>
+          <canvas
+            id="canvas"
+            class="hidden"
+          ></canvas>
+          <img
+            id="photo"
+            alt="snapshot"
+            class="hidden"
+          />
         </div>
-        <p class="status" id="camStatus">Camera is idle.</p>
+        <p
+          class="status"
+          id="camStatus"
+        >
+          Camera is idle.
+        </p>
       </section>
 
       <!-- Right: Presets -->
       <section class="card">
         <h2>🎛️ Presets</h2>
-        <div class="grid" id="presetGrid">
+        <div
+          class="grid"
+          id="presetGrid"
+        >
           <!-- 3D Figurine (single-person safe) -->
           <button
             class="chip"
@@ -92,31 +134,72 @@
           <!-- Photo to Painting (single-person, styled output) -->
           <button
             class="chip"
-            data-prompt="Use the uploaded webcam photo as the only reference image. Reimagine this portrait as a [style] artwork set in the [time period]. Present the final as a photographed framed artwork in a [color, description] frame. Maintain accurate facial likeness and identity. No added text or signatures."
+            data-prompt="Use the uploaded webcam photo as the only reference image.
+Reimagine this portrait as an Impressionist oil painting set in the 1880s.
+Present the final as a photographed framed artwork in a matte gold frame.
+Maintain accurate facial likeness and identity. No added text or signatures."
           >
             Photo to Painting
           </button>
         </div>
 
         <div class="row mt">
-          <button id="btnApply" class="primary" disabled>Apply preset</button>
-          <button id="btnDownload" disabled>Download result</button>
+          <button
+            id="btnApply"
+            class="primary"
+            disabled
+          >
+            Apply preset
+          </button>
+          <button
+            id="btnDownload"
+            disabled
+          >
+            Download result
+          </button>
         </div>
-        <p class="status" id="apiStatus">Take a picture, pick a preset, then apply.</p>
+        <p
+          class="status"
+          id="apiStatus"
+        >
+          Take a picture, pick a preset, then apply.
+        </p>
         <div class="row mt">
-          <img id="qr" class="hidden" alt="QR code to your photo" />
+          <img
+            id="qr"
+            class="hidden"
+            alt="QR code to your photo"
+          />
         </div>
         <div class="row mt">
-          <button id="btnCopy" class="ghost hidden">Copy link</button>
-          <a id="btnOpen" class="ghost hidden" target="_blank" rel="noopener">Open link</a>
+          <button
+            id="btnCopy"
+            class="ghost hidden"
+          >
+            Copy link
+          </button>
+          <a
+            id="btnOpen"
+            class="ghost hidden"
+            target="_blank"
+            rel="noopener"
+          >
+            Open link
+          </a>
         </div>
         <div class="hint">
-          Tip: Works with touch <em>and</em> mouse clicks. On desktop, press <kbd>Space</kbd> to
-          snap.
+          Tip: Works with touch
+          <em>and</em>
+          mouse clicks. On desktop, press
+          <kbd>Space</kbd>
+          to snap.
         </div>
       </section>
     </div>
 
-    <script src="./app.js" type="module"></script>
+    <script
+      src="./app.js"
+      type="module"
+    ></script>
   </body>
 </html>
