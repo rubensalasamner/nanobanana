@@ -57,6 +57,10 @@
             alt="snapshot"
             class="hidden"
           />
+          <div
+            id="countdown"
+            class="hidden"
+          ></div>
         </div>
 
         <p
@@ -133,7 +137,12 @@ Maintain accurate facial likeness and identity. No added text or signatures."
             class="primary"
             disabled
           >
-            Apply preset
+            <span id="applyText">Apply preset</span>
+            <span
+              id="applySpinner"
+              class="spinner hidden"
+              aria-hidden="true"
+            ></span>
           </button>
           <button
             id="btnDownload"

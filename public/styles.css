@@ -86,6 +86,7 @@ button.ghost {
 }
 .stage {
   margin-top: 12px;
+  position: relative;
 }
 video,
 canvas,
@@ -133,4 +134,34 @@ img {
   border-radius: 12px;
   background: #000;
   object-fit: cover;
+}
+
+#countdown {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: clamp(56px, 12vw, 120px);
+  font-weight: 800;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 12px;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  display: inline-block;
+  vertical-align: -2px;
+  animation: spin 0.8s linear infinite;
+  margin-left: 8px;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
