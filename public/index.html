@@ -11,6 +11,54 @@
       rel="stylesheet"
       href="./styles.css"
     />
+    <style media="print">
+      /* Print styles */
+      @page {
+        size: auto;
+        margin: 0.5in;
+      }
+      body {
+        background: white;
+        color: black;
+      }
+      .wrap {
+        display: block;
+        padding: 0;
+      }
+      .card {
+        border: none;
+        box-shadow: none;
+        padding: 0;
+        background: white;
+      }
+      .bar,
+      .grid,
+      .row,
+      .status,
+      .hint,
+      button,
+      #qr,
+      #btnCopy,
+      #btnOpen {
+        display: none !important;
+      }
+      .stage {
+        max-width: 100%;
+        aspect-ratio: auto;
+        background: white;
+        border-radius: 0;
+      }
+      .stage img {
+        width: 100%;
+        height: auto;
+        object-fit: contain;
+        border-radius: 0;
+        background: white;
+      }
+      h2 {
+        display: none;
+      }
+    </style>
   </head>
   <body>
     <div class="wrap">
@@ -157,6 +205,12 @@ Maintain accurate facial likeness and identity. No added text or signatures."
             disabled
           >
             Download result
+          </button>
+          <button
+            id="btnPrint"
+            disabled
+          >
+            🖨️ Print
           </button>
         </div>
 

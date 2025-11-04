@@ -10,6 +10,7 @@ const btnSnap = document.getElementById('btnSnap');
 const btnRetake = document.getElementById('btnRetake');
 const btnApply = document.getElementById('btnApply');
 const btnDownload = document.getElementById('btnDownload');
+const btnPrint = document.getElementById('btnPrint');
 const grid = document.getElementById('presetGrid');
 
 const qrImg = document.getElementById('qr');
@@ -155,6 +156,8 @@ function retake() {
   photo.classList.add('hidden');
   video.classList.remove('hidden');
   btnApply.disabled = true;
+  btnDownload.disabled = true;
+  btnPrint.disabled = true;
   camStatus.textContent = 'Ready to retake.';
 }
 
@@ -203,6 +206,11 @@ async function applyPreset() {
       a.href = out.imageUrl;
       a.download = 'booth.webp';
       a.click();
+    };
+
+    btnPrint.disabled = false;
+    btnPrint.onclick = () => {
+      window.print();
     };
 
     qrImg.src = out.qrDataUrl;
