@@ -91,10 +91,8 @@ async function startCamera() {
     btnSnap.disabled = false;
     btnRetake.classList.add('hidden');
 
-    // NEW: disable (or hide) Start after running
-    btnStart.disabled = true;
-    // If you prefer to fully hide it, uncomment:
-    // btnStart.classList.add('hidden');
+    // Hide Start button after camera is running
+    btnStart.classList.add('hidden');
 
     camStatus.textContent = 'Camera is running. Tap “Take picture”.';
   } catch (e) {
