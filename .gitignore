@@ -6,3 +6,4 @@ dist
 build
 coverage
 public/**/*.min.js.env
+.env
