@@ -141,9 +141,7 @@ app.post('/api/edit', upload.single('image'), async (req, res) => {
     const fileSize = req.file.buffer.length;
     if (fileSize > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Image too large' });
 
-    console.log(
-      `Editing image (${req.file.mimetype}, ${fileSize} bytes) with prompt: "${prompt}"`
-    );
+    console.log(`Editing image (${req.file.mimetype}, ${fileSize} bytes) with prompt: "${prompt}"`);
 
     const img = await runGeminiEdit(req.file.mimetype, req.file.buffer, prompt);
     if (!img) {
@@ -196,7 +194,10 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
       shareUrl = imageUrl;
       console.log('Returning data URL image (UPLOAD_TARGET=dataurl)');
     } else {
-      const webpBuffer = await sharp(outBuffer).rotate().toFormat('webp', { quality: 80 }).toBuffer();
+      const webpBuffer = await sharp(outBuffer)
+        .rotate()
+        .toFormat('webp', { quality: 80 })
+        .toBuffer();
       outBuffer = webpBuffer;
       outMime = 'image/webp';
       const filename = `${id}.webp`;
