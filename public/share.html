@@ -109,7 +109,7 @@
       <img id="photo" alt="Edited result" />
 
       <div class="row">
-        <a id="downloadBtn" class="button primary" download>⬇️ Download</a>
+        <button id="downloadBtn" class="primary">⬇️ Download</button>
         <button id="copyLink">📋 Copy link</button>
         <button id="shareBtn" class="hidden">📤 Share…</button>
       </div>
@@ -151,9 +151,8 @@
         );
       } else {
         photoEl.src = imageUrl;
-        downloadBtn.href = imageUrl;
         const ext = mime === 'image/png' ? 'png' : mime === 'image/jpeg' ? 'jpg' : 'webp';
-        downloadBtn.download = `booth-${id}.${ext}`;
+        const filename = `booth-${id}.${ext}`;
 
         const encodedUrl = encodeURIComponent(imageUrl);
         whatsapp.href = `https://wa.me/?text=${encodedUrl}`;
@@ -169,6 +168,31 @@
           } catch {
             copyLinkBtn.textContent = '❌ Copy failed';
             setTimeout(() => (copyLinkBtn.textContent = '📋 Copy link'), 2000);
+          }
+        });
+
+        downloadBtn.addEventListener('click', async () => {
+          downloadBtn.disabled = true;
+          const originalText = downloadBtn.textContent;
+          downloadBtn.textContent = '⬇️ Downloading…';
+          try {
+            const resp = await fetch(imageUrl, { mode: 'cors' });
+            if (!resp.ok) throw new Error('Fetch failed');
+            const blob = await resp.blob();
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            downloadBtn.textContent = '✅ Saved';
+          } catch (err) {
+            console.error('Download failed', err);
+            downloadBtn.textContent = '❌ Failed, tap again';
+          } finally {
+            downloadBtn.disabled = false;
+            setTimeout(() => (downloadBtn.textContent = originalText), 2000);
           }
         });
 
