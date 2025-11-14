@@ -97,6 +97,12 @@ function getPathnameFromUrl(u) {
   }
 }
 
+function getOrigin(req) {
+  const proto = req.headers['x-forwarded-proto'] || 'https';
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  return `${proto}://${host}`;
+}
+
 /** ===== Route handlers ===== */
 async function handleHealthz(_req, res) {
   res.status(200).json({ ok: true });
@@ -162,7 +168,9 @@ async function handleEditAndShare(req, res, reqId) {
   log(reqId, 'log', 'gemini.ok', { outMime: outImg.mime, outBytes: outImg.buf.length });
 
   const id = nanoid(10);
-  let imageUrl, shareUrl;
+  const origin = getOrigin(req);
+  let imageUrl;
+  let outMime = outImg.mime;
 
   if (UPLOAD_TARGET === 'blob') {
     // Convert image buffer to optimized WebP (~80% quality)
@@ -181,14 +189,17 @@ async function handleEditAndShare(req, res, reqId) {
     });
     log(reqId, 'log', 'blob.put.ok', { filename, ms: Date.now() - putStart, url });
     imageUrl = url;
-    shareUrl = url;
+    outMime = 'image/webp';
   } else {
     // Fallback dev mode: return data URL (not recommended for production sharing)
     const base64 = `data:${outImg.mime};base64,${outImg.buf.toString('base64')}`;
     imageUrl = base64;
-    shareUrl = base64;
     log(reqId, 'log', 'share.dataurl.ok', { length: base64.length });
   }
+
+  const shareUrl = `${origin}/share.html?imageUrl=${encodeURIComponent(imageUrl)}&id=${id}&mime=${encodeURIComponent(
+    outMime
+  )}`;
 
   const qrStart = Date.now();
   const qrDataUrl = await QRCode.toDataURL(shareUrl, { margin: 1, scale: 6 });
@@ -199,7 +210,7 @@ async function handleEditAndShare(req, res, reqId) {
     ok: true,
     id,
     mode: UPLOAD_TARGET,
-    mime: outImg.mime,
+    mime: outMime,
     imageUrl: imageUrl,
     path, // blob pathname, handy for cleanup
     shareUrl,

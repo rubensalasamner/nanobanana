@@ -184,14 +184,12 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
     const origin = getOrigin(req);
 
     let imageUrl;
-    let shareUrl;
     let outMime = img.mime;
     let outBuffer = img.buffer;
     let storedPath = null;
 
     if (UPLOAD_TARGET === 'dataurl') {
       imageUrl = `data:${outMime};base64,${outBuffer.toString('base64')}`;
-      shareUrl = imageUrl;
       console.log('Returning data URL image (UPLOAD_TARGET=dataurl)');
     } else {
       const webpBuffer = await sharp(outBuffer)
@@ -205,8 +203,11 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
       await fsp.writeFile(filePath, outBuffer);
       storedPath = `shares/${filename}`;
       imageUrl = `${origin}/${storedPath}`;
-      shareUrl = `${origin}/share/${id}`;
     }
+
+    const shareUrl = `${origin}/share.html?imageUrl=${encodeURIComponent(
+      imageUrl
+    )}&id=${id}&mime=${encodeURIComponent(outMime)}`;
 
     const qrDataUrl = await QRCode.toDataURL(shareUrl, { margin: 1, scale: 6 });
     const resolvedPath = storedPath || getPathnameFromUrl(imageUrl);
