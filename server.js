@@ -9,6 +9,7 @@ import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { nanoid } from 'nanoid';
 import QRCode from 'qrcode';
+import sharp from 'sharp';
 
 dotenv.config();
 
@@ -23,25 +24,30 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 const SHARES_DIR = path.join(PUBLIC_DIR, 'shares');
 fs.mkdirSync(SHARES_DIR, { recursive: true });
 
+// --- config ---
+const UPLOAD_TARGET = (process.env.UPLOAD_TARGET || 'filesystem').toLowerCase(); // filesystem | dataurl
+const MAX_UPLOAD_BYTES = 4.3 * 1024 * 1024;
+
 // --- helpers ---
 function getOrigin(req) {
   const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
   const host = req.headers['x-forwarded-host'] || req.get('host');
   return `${proto}://${host}`;
 }
-function extFromMime(m) {
-  if (!m) return 'jpg';
-  if (m === 'image/jpeg' || m === 'image/jpg') return 'jpg';
-  if (m === 'image/png') return 'png';
-  if (m === 'image/webp') return 'webp';
-  return 'jpg';
-}
 function findExistingSharePath(id) {
-  for (const ext of ['jpg', 'png', 'webp']) {
+  for (const ext of ['webp', 'jpg', 'png']) {
     const p = path.join(SHARES_DIR, `${id}.${ext}`);
     if (fs.existsSync(p)) return { path: p, ext };
   }
   return null;
+}
+
+function getPathnameFromUrl(u) {
+  try {
+    return new URL(u).pathname.slice(1);
+  } catch {
+    return null;
+  }
 }
 
 // --- uploads ---
@@ -86,11 +92,23 @@ app.get('/diag', (_req, res) => {
     ok: true,
     hasKey: Boolean(process.env.GEMINI_API_KEY),
     model: 'gemini-2.5-flash-image',
+    uploadTarget: UPLOAD_TARGET,
   });
 });
 
 // --- Gemini client ---
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+async function runGeminiEdit(fileMime, fileBuf, prompt) {
+  const resp = await ai.models.generateContent({
+    model: 'gemini-2.5-flash-image',
+    contents: [
+      { text: prompt },
+      { inlineData: { mimeType: fileMime || 'image/jpeg', data: fileBuf.toString('base64') } },
+    ],
+  });
+  return extractImagePart(resp);
+}
 
 // --- helper: extract first image from a generateContent response ---
 function extractImagePart(resp) {
@@ -120,24 +138,17 @@ app.post('/api/edit', upload.single('image'), async (req, res) => {
     const prompt = String(req.body.prompt ?? '');
     if (!prompt) return res.status(400).json({ error: 'Missing prompt' });
 
-    const mimeType = req.file.mimetype || 'image/jpeg';
-    const base64 = req.file.buffer.toString('base64');
+    const fileSize = req.file.buffer.length;
+    if (fileSize > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Image too large' });
 
     console.log(
-      `Editing image (${mimeType}, ${req.file.buffer.length} bytes) with prompt: "${prompt}"`
+      `Editing image (${req.file.mimetype}, ${fileSize} bytes) with prompt: "${prompt}"`
     );
 
-    const resp = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: [{ text: prompt }, { inlineData: { mimeType, data: base64 } }],
-    });
-
-    const img = extractImagePart(resp);
+    const img = await runGeminiEdit(req.file.mimetype, req.file.buffer, prompt);
     if (!img) {
-      const parts = resp?.candidates?.[0]?.content?.parts || [];
-      const textMsg = parts.find((p) => p?.text)?.text || 'No image returned by model';
-      console.warn('No image in response. Message:', textMsg);
-      return res.status(422).json({ error: textMsg });
+      console.warn('No image in response from Gemini');
+      return res.status(422).json({ error: 'Model returned no image' });
     }
 
     res
@@ -160,35 +171,55 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
     const prompt = String(req.body.prompt ?? '');
     if (!prompt) return res.status(400).json({ error: 'Missing prompt' });
 
-    const mimeType = req.file.mimetype || 'image/jpeg';
-    const base64 = req.file.buffer.toString('base64');
+    const fileSize = req.file.buffer.length;
+    if (fileSize > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Image too large' });
 
     console.log(`Editing (and sharing) image with prompt: "${prompt}"`);
 
-    const resp = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: [{ text: prompt }, { inlineData: { mimeType, data: base64 } }],
-    });
-
-    const img = extractImagePart(resp);
+    const img = await runGeminiEdit(req.file.mimetype, req.file.buffer, prompt);
     if (!img) {
-      const parts = resp?.candidates?.[0]?.content?.parts || [];
-      const textMsg = parts.find((p) => p?.text)?.text || 'No image returned by model';
-      return res.status(422).json({ error: textMsg });
+      console.warn('No image returned by Gemini');
+      return res.status(422).json({ error: 'Model returned no image' });
     }
 
     const id = nanoid(10);
-    const ext = extFromMime(img.mime);
-    const filePath = path.join(SHARES_DIR, `${id}.${ext}`);
-    await fsp.writeFile(filePath, img.buffer);
-
     const origin = getOrigin(req);
-    const imageUrl = `${origin}/shares/${id}.${ext}`;
-    const shareUrl = `${origin}/share/${id}`;
+
+    let imageUrl;
+    let shareUrl;
+    let outMime = img.mime;
+    let outBuffer = img.buffer;
+    let storedPath = null;
+
+    if (UPLOAD_TARGET === 'dataurl') {
+      imageUrl = `data:${outMime};base64,${outBuffer.toString('base64')}`;
+      shareUrl = imageUrl;
+      console.log('Returning data URL image (UPLOAD_TARGET=dataurl)');
+    } else {
+      const webpBuffer = await sharp(outBuffer).rotate().toFormat('webp', { quality: 80 }).toBuffer();
+      outBuffer = webpBuffer;
+      outMime = 'image/webp';
+      const filename = `${id}.webp`;
+      const filePath = path.join(SHARES_DIR, filename);
+      await fsp.writeFile(filePath, outBuffer);
+      storedPath = `shares/${filename}`;
+      imageUrl = `${origin}/${storedPath}`;
+      shareUrl = `${origin}/share/${id}`;
+    }
 
     const qrDataUrl = await QRCode.toDataURL(shareUrl, { margin: 1, scale: 6 });
+    const resolvedPath = storedPath || getPathnameFromUrl(imageUrl);
 
-    res.json({ ok: true, id, imageUrl, shareUrl, qrDataUrl, mime: img.mime });
+    res.json({
+      ok: true,
+      id,
+      mode: UPLOAD_TARGET,
+      mime: outMime,
+      imageUrl,
+      path: resolvedPath,
+      shareUrl,
+      qrDataUrl,
+    });
   } catch (err) {
     console.error('edit-and-share failed:', err);
     res.status(500).json({ error: 'Gemini request failed', detail: String(err?.message || err) });
