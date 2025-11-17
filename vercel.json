@@ -1,11 +1,12 @@
 {
-  "buildCommand": "npm run build",
-  "outputDirectory": "public",
-  "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/api/index.js"
-    }
+  "builds": [
+    { "src": "api/**", "use": "@vercel/node" },
+    { "src": "public/**", "use": "@vercel/static" }
+  ],
+  "routes": [
+    { "src": "^/api/(.*)$", "dest": "api/index.js" },
+    { "src": "^/$", "dest": "public/index.html" },
+    { "src": "^(.*)$", "dest": "public$1" }
   ],
   "crons": [
     {
