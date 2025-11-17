@@ -22,11 +22,81 @@ const countdown = document.getElementById('countdown');
 const applyText = document.getElementById('applyText');
 const applySpinner = document.getElementById('applySpinner');
 
+// ----- Wizard Flow -----
+const stepScreensaver = document.getElementById('step-screensaver');
+const stepWelcome = document.getElementById('step-welcome');
+const stepCamera = document.getElementById('step-camera');
+const screensaverVideo = document.getElementById('screensaver-video');
+const btnStartHere = document.getElementById('btnStartHere');
+const stepNav = document.getElementById('stepNav');
+const stepStyle = document.getElementById('step-style');
+const stepResult = document.getElementById('step-result');
+const resultPhoto = document.getElementById('resultPhoto');
+const btnChangeStyle = document.getElementById('btnChangeStyle');
+const btnShareResult = document.getElementById('btnShareResult');
+const btnPrintResult = document.getElementById('btnPrintResult');
+const btnRestart = document.getElementById('btnRestart');
+const stepFooter = document.querySelector('.step-footer');
+const styleTitle = document.querySelector('.style-title');
+
+let currentStep = 'screensaver';
+const wizardSteps = {
+  screensaver: stepScreensaver,
+  welcome: stepWelcome,
+  camera: stepCamera,
+  style: stepStyle,
+  result: stepResult,
+};
+
+function showStep(stepName) {
+  Object.values(wizardSteps).forEach((el) => el?.classList.remove('active'));
+
+  if (wizardSteps[stepName]) {
+    wizardSteps[stepName].classList.add('active');
+    currentStep = stepName;
+  }
+
+  if (stepName === 'camera') {
+    if (!stream) {
+      startCamera();
+    }
+  }
+
+  if (stepName === 'result' && resultPhoto && resultPhoto.src) {
+    resultPhoto.classList.remove('hidden');
+  }
+
+  if (stepNav) {
+    stepNav.querySelectorAll('[data-step]').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.step === stepName);
+    });
+  }
+
+  // Hide footer on screensaver step
+  if (stepFooter) {
+    if (stepName === 'screensaver') {
+      stepFooter.classList.add('hidden');
+    } else {
+      stepFooter.classList.remove('hidden');
+    }
+  }
+}
+
+if (stepNav) {
+  stepNav.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-step]');
+    if (!btn) return;
+    showStep(btn.dataset.step);
+  });
+}
+
 // ----- State -----
 let stream = null;
 let selectedPrompt = null;
 let latestBlob = null; // downscaled upload
 let latestShare = null; // { imageUrl, shareUrl, qrDataUrl }
+let isApplying = false;
+let styleStepTimeout = null;
 
 // Hourly cleanup ping (hits Vercel serverless /api/cleanup)
 setInterval(() => fetch('/api/cleanup').catch(() => {}), 60 * 60 * 1000);
@@ -42,6 +112,22 @@ function onTap(el, handler) {
     handler(e);
   });
   el.addEventListener('click', handler);
+}
+
+// Screensaver tap to go to welcome
+if (stepScreensaver) {
+  onTap(stepScreensaver, () => {
+    if (currentStep === 'screensaver') {
+      showStep('welcome');
+    }
+  });
+}
+
+// Welcome button to go to camera
+if (btnStartHere) {
+  onTap(btnStartHere, () => {
+    showStep('camera');
+  });
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -150,6 +236,14 @@ async function takeSnapshot() {
   btnRetake.classList.remove('hidden');
   btnApply.disabled = !selectedPrompt;
   camStatus.textContent = 'Snapshot captured.';
+
+  if (styleStepTimeout) {
+    clearTimeout(styleStepTimeout);
+  }
+  styleStepTimeout = setTimeout(() => {
+    styleStepTimeout = null; // Clear before calling showStep so guard doesn't block
+    showStep('style');
+  }, 2000);
 }
 
 function retake() {
@@ -159,6 +253,26 @@ function retake() {
   btnDownload.disabled = true;
   btnPrint.disabled = true;
   camStatus.textContent = 'Ready to retake.';
+  latestBlob = null;
+  latestShare = null;
+  if (styleStepTimeout) {
+    clearTimeout(styleStepTimeout);
+    styleStepTimeout = null;
+  }
+  if (resultPhoto) {
+    resultPhoto.classList.add('hidden');
+    resultPhoto.removeAttribute('src');
+  }
+  updateResultButtons();
+  showStep('camera');
+}
+
+function restartFlow() {
+  selectedPrompt = null;
+  latestShare = null;
+  grid?.querySelectorAll('[data-prompt]').forEach((el) => (el.style.outline = ''));
+  retake();
+  showStep('welcome');
 }
 
 // ----- Presets -----
@@ -170,6 +284,20 @@ function handlePresetTap(e) {
   selectedPrompt = btn.dataset.prompt;
   btnApply.disabled = !latestBlob;
   apiStatus.textContent = 'Selected: ' + (selectedPrompt.split('\n')[0] || 'preset');
+
+  if (latestBlob && !isApplying) {
+    applyPreset();
+  } else if (!latestBlob) {
+    camStatus.textContent = 'Take a picture first.';
+    showStep('camera');
+  }
+}
+
+function updateResultButtons() {
+  const hasResultImage = Boolean(resultPhoto?.src);
+  const hasShareLink = Boolean(latestShare?.shareUrl);
+  if (btnShareResult) btnShareResult.disabled = !hasShareLink;
+  if (btnPrintResult) btnPrintResult.disabled = !hasResultImage;
 }
 
 // ----- API calls -----
@@ -188,6 +316,14 @@ async function applyPreset() {
     return;
   }
 
+  if (isApplying) return;
+  isApplying = true;
+
+  // Update title to show generating status
+  if (styleTitle) {
+    styleTitle.textContent = 'Generating Image...';
+  }
+
   // NEW: spinner on button
   btnApply.disabled = true;
   applyText.textContent = 'Applying…';
@@ -199,6 +335,10 @@ async function applyPreset() {
 
     photo.src = out.imageUrl;
     latestShare = out;
+    if (resultPhoto) {
+      resultPhoto.src = out.imageUrl;
+      resultPhoto.classList.remove('hidden');
+    }
 
     btnDownload.disabled = false;
     btnDownload.onclick = () => {
@@ -230,13 +370,24 @@ async function applyPreset() {
     };
 
     apiStatus.textContent = 'Done. Scan the QR to open your photo.';
+    showStep('result');
+    updateResultButtons();
   } catch (err) {
     apiStatus.textContent = 'Failed: ' + err.message + ' (check server logs)';
+    // Restore title on error
+    if (styleTitle) {
+      styleTitle.textContent = 'Choose your style';
+    }
   } finally {
     // NEW: stop spinner
     applySpinner.classList.add('hidden');
     applyText.textContent = 'Apply preset';
     btnApply.disabled = false;
+    isApplying = false;
+    // Restore title when done (if still on style step)
+    if (styleTitle && currentStep === 'style') {
+      styleTitle.textContent = 'Choose your style';
+    }
   }
 }
 
@@ -245,8 +396,37 @@ onTap(btnStart, startCamera);
 onTap(btnSnap, takeSnapshot);
 onTap(btnRetake, retake);
 onTap(btnApply, applyPreset);
-grid.addEventListener('pointerup', handlePresetTap);
-grid.addEventListener('click', handlePresetTap);
+if (grid) {
+  grid.addEventListener('pointerup', handlePresetTap);
+  grid.addEventListener('click', handlePresetTap);
+}
+
+if (btnChangeStyle) {
+  onTap(btnChangeStyle, () => {
+    // Restore title when navigating back to style step
+    if (styleTitle) {
+      styleTitle.textContent = 'Choose your style';
+    }
+    showStep('style');
+  });
+}
+if (btnShareResult) {
+  onTap(btnShareResult, () => {
+    if (btnShareResult.disabled) return;
+    if (latestShare?.shareUrl) {
+      window.open(latestShare.shareUrl, '_blank', 'noopener');
+    }
+  });
+}
+if (btnPrintResult) {
+  onTap(btnPrintResult, () => {
+    if (btnPrintResult.disabled) return;
+    window.print();
+  });
+}
+if (btnRestart) {
+  onTap(btnRestart, restartFlow);
+}
 
 // ----- Desktop shortcut -----
 document.addEventListener('keydown', (e) => {
@@ -255,3 +435,6 @@ document.addEventListener('keydown', (e) => {
     if (!btnSnap.disabled) takeSnapshot();
   }
 });
+
+showStep(currentStep);
+updateResultButtons();

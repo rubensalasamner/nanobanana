@@ -7,7 +7,6 @@ import { put as blobPut, list as blobList, del as blobDel } from '@vercel/blob';
 import sharp from 'sharp';
 
 export const config = {
-  api: { bodyParser: false }, // we handle multipart ourselves
   runtime: 'nodejs',
   maxDuration: 30,
 };

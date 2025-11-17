@@ -3,129 +3,201 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Your Photo</title>
-    <meta property="og:title" content="Your Photo" />
+    <title>Your Photo - Nano Banana</title>
+    <meta property="og:title" content="Your Photo - Nano Banana" />
     <meta property="og:type" content="website" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="stylesheet" href="./styles.css" />
     <style>
-      :root {
-        --bg: #0b0f14;
-        --fg: #e7ebef;
-        --card: #121821;
-        --accent: #69d1ff;
+      @font-face {
+        font-family: 'Google Sans';
+        src: url('./assets/fonts/GoogleSans[GRAD,opsz,wght].ttf') format('truetype-variations');
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: swap;
       }
-      * {
-        box-sizing: border-box;
+
+      @font-face {
+        font-family: 'Google Sans';
+        src: url('./assets/fonts/GoogleSans-Italic[GRAD,opsz,wght].ttf') format('truetype-variations');
+        font-weight: 100 900;
+        font-style: italic;
+        font-display: swap;
       }
+
       body {
-        margin: 0;
-        font-family:
-          ui-sans-serif,
-          system-ui,
-          -apple-system,
-          Segoe UI,
-          Roboto,
-          Ubuntu;
-        background: var(--bg);
-        color: var(--fg);
+        background: #fff;
+        color: #000;
         min-height: 100vh;
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
-        padding: 16px;
+        padding: 40px 16px 100px;
+        font-family: 'Google Sans', ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu;
       }
-      main {
-        width: min(960px, 100%);
-        background: var(--card);
-        border-radius: 20px;
-        border: 1px solid #1f2835;
-        box-shadow: 0 15px 40px rgba(0, 0, 0, 0.4);
-        padding: 24px;
+
+      .share-container {
+        width: 100%;
+        max-width: 600px;
         display: flex;
         flex-direction: column;
-        gap: 20px;
+        align-items: center;
+        gap: 24px;
       }
-      h1,
-      p {
+
+      .share-header {
+        text-align: center;
+      }
+
+      .share-brand {
         margin: 0;
+        font-size: 33px;
+        font-weight: 600;
+        color: #4285f4;
       }
-      img {
+
+      .share-title {
+        margin: 4px 0 0 0;
+        font-size: clamp(36px, 5vw, 48px);
+        color: #000;
+        font-weight: 400;
+      }
+
+      .share-image-container {
+        width: min(420px, 90vw);
+        aspect-ratio: 1 / 1;
+        border-radius: 32px;
+        background: transparent;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .share-image-container img {
         width: 100%;
-        border-radius: 16px;
-        background: #000;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 32px;
+        background: transparent;
       }
-      .row {
+
+      .share-actions {
         display: flex;
-        gap: 12px;
         flex-wrap: wrap;
+        gap: 12px;
+        justify-content: center;
+        width: 100%;
       }
-      button,
-      a.button {
+
+      .share-actions button,
+      .share-actions a.button {
         appearance: none;
-        border: 1px solid #2a3648;
-        background: #131a25;
-        color: inherit;
-        padding: 12px 18px;
-        border-radius: 999px;
-        font-size: 16px;
+        border: none;
+        background: #4285f4;
+        color: #fff;
+        padding: 20px 36px;
+        border-radius: 36px;
+        font-size: 28px;
+        min-width: 250px;
+        font-weight: 500;
         text-decoration: none;
         cursor: pointer;
+        font-family: inherit;
+        transition: opacity 0.2s;
       }
-      button.primary,
-      a.button.primary {
-        background: linear-gradient(180deg, #1a9fff, #0b7bd1);
-        border-color: #0b7bd1;
+
+      .share-actions button:hover,
+      .share-actions a.button:hover {
+        opacity: 0.9;
       }
-      button:disabled {
-        opacity: 0.6;
+
+      .share-actions button:disabled {
+        opacity: 0.5;
         cursor: not-allowed;
       }
+
+      .share-actions button.secondary,
+      .share-actions a.button.secondary {
+        background: transparent;
+        border: 2px solid #4285f4;
+        color: #4285f4;
+      }
+
       .share-links {
         display: flex;
         flex-wrap: wrap;
         gap: 8px;
+        justify-content: center;
+        width: 100%;
       }
+
       .share-links a {
-        font-size: 14px;
-        padding: 8px 12px;
+        font-size: 28px;
+        padding: 20px 36px;
+        min-width: 250px;
       }
+
       .hidden {
         display: none !important;
       }
-      footer {
-        font-size: 13px;
-        color: #94a3b8;
-        text-align: center;
+
+      .step-footer {
+        position: fixed;
+        left: 32px;
+        right: 32px;
+        bottom: 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 24px;
+        font-size: 12px;
+        color: #111;
+        z-index: 60;
+        padding: 0;
+        box-shadow: none;
+        background: none;
+      }
+
+      .step-footer img {
+        height: 26px;
+        width: auto;
+        background: transparent;
+      }
+
+      .footer-note {
+        margin: 0;
+        font-size: 12px;
       }
     </style>
   </head>
   <body>
-    <main>
-      <header>
-        <h1>🎉 Your Photo</h1>
-        <p>Share or download your edited image below.</p>
-      </header>
-
-      <img id="photo" alt="Edited result" />
-
-      <div class="row">
-        <button id="downloadBtn" class="primary">⬇️ Download</button>
-        <button id="copyLink">📋 Copy link</button>
-        <button id="shareBtn" class="hidden">📤 Share…</button>
+    <div class="share-container">
+      <div class="share-header">
+        <p class="share-brand">Nano Banana</p>
+        <h1 class="share-title">Share your image</h1>
       </div>
 
-      <div class="row share-links">
-        <a id="whatsapp" class="button" target="_blank" rel="noopener">WhatsApp</a>
-        <a id="facebook" class="button" target="_blank" rel="noopener">Facebook</a>
-        <a id="twitter" class="button" target="_blank" rel="noopener">X / Twitter</a>
-        <a id="sms" class="button" target="_blank" rel="noopener">SMS</a>
+      <div class="share-image-container">
+        <img id="photo" alt="Edited result" />
       </div>
 
-      <footer>
-        Having trouble opening the link? Copy it and send it to yourself, or ask a staff member for
-        help.
-      </footer>
-    </main>
+      <div class="share-actions">
+        <button id="downloadBtn" class="primary">Download</button>
+        <button id="copyLink" class="secondary">Copy link</button>
+        <button id="shareBtn" class="hidden">Share</button>
+      </div>
+
+      <div class="share-links">
+        <a id="linkedin" class="button secondary" target="_blank" rel="noopener">LinkedIn</a>
+        <a id="instagram" class="button secondary" target="_blank" rel="noopener">Instagram</a>
+      </div>
+    </div>
+
+    <div class="step-footer">
+      <img src="./assets/images/Gemini-logo.png" alt="Gemini" class="footer-logo" />
+      <p class="footer-note">
+        Image files are stored temporarily for one (1) hour, after which they are permanently deleted.
+      </p>
+    </div>
 
     <script>
       const params = new URLSearchParams(window.location.search);
@@ -137,15 +209,13 @@
       const downloadBtn = document.getElementById('downloadBtn');
       const copyLinkBtn = document.getElementById('copyLink');
       const shareBtn = document.getElementById('shareBtn');
-      const whatsapp = document.getElementById('whatsapp');
-      const facebook = document.getElementById('facebook');
-      const twitter = document.getElementById('twitter');
-      const sms = document.getElementById('sms');
+      const linkedin = document.getElementById('linkedin');
+      const instagram = document.getElementById('instagram');
 
       if (!imageUrl) {
         photoEl.alt = 'Missing image';
         photoEl.style.display = 'none';
-        document.querySelector('main').insertAdjacentHTML(
+        document.querySelector('.share-container').insertAdjacentHTML(
           'beforeend',
           '<p style="color:#f87171">Image URL was not provided. Please return to the kiosk and try again.</p>'
         );
@@ -155,26 +225,32 @@
         const filename = `booth-${id}.${ext}`;
 
         const encodedUrl = encodeURIComponent(imageUrl);
-        whatsapp.href = `https://wa.me/?text=${encodedUrl}`;
-        facebook.href = `https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`;
-        twitter.href = `https://x.com/intent/tweet?url=${encodedUrl}`;
-        sms.href = `sms:?&body=${encodedUrl}`;
+        linkedin.href = `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`;
+        instagram.addEventListener('click', async (e) => {
+          e.preventDefault();
+          try {
+            await navigator.clipboard.writeText(imageUrl);
+            alert('Image URL copied! Download the image and upload it to Instagram.');
+          } catch {
+            alert('Please copy the image URL manually and download the image to share on Instagram.');
+          }
+        });
 
         copyLinkBtn.addEventListener('click', async () => {
           try {
             await navigator.clipboard.writeText(imageUrl);
-            copyLinkBtn.textContent = '✅ Copied!';
-            setTimeout(() => (copyLinkBtn.textContent = '📋 Copy link'), 2000);
+            copyLinkBtn.textContent = 'Copied!';
+            setTimeout(() => (copyLinkBtn.textContent = 'Copy link'), 2000);
           } catch {
-            copyLinkBtn.textContent = '❌ Copy failed';
-            setTimeout(() => (copyLinkBtn.textContent = '📋 Copy link'), 2000);
+            copyLinkBtn.textContent = 'Copy failed';
+            setTimeout(() => (copyLinkBtn.textContent = 'Copy link'), 2000);
           }
         });
 
         downloadBtn.addEventListener('click', async () => {
           downloadBtn.disabled = true;
           const originalText = downloadBtn.textContent;
-          downloadBtn.textContent = '⬇️ Downloading…';
+          downloadBtn.textContent = 'Downloading…';
           try {
             const resp = await fetch(imageUrl, { mode: 'cors' });
             if (!resp.ok) throw new Error('Fetch failed');
@@ -186,10 +262,10 @@
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(link.href);
-            downloadBtn.textContent = '✅ Saved';
+            downloadBtn.textContent = 'Saved';
           } catch (err) {
             console.error('Download failed', err);
-            downloadBtn.textContent = '❌ Failed, tap again';
+            downloadBtn.textContent = 'Failed, try again';
           } finally {
             downloadBtn.disabled = false;
             setTimeout(() => (downloadBtn.textContent = originalText), 2000);
