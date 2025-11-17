@@ -1,4 +1,6 @@
 {
+  "buildCommand": null,
+  "outputDirectory": null,
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/index.js" }
   ],

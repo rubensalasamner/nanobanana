@@ -1,3 +1,6 @@
+// This file is for local development only. Do not use on Vercel.
+// Vercel uses api/index.js as the serverless function.
+
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
@@ -11,6 +14,12 @@ import { nanoid } from 'nanoid';
 import QRCode from 'qrcode';
 import sharp from 'sharp';
 
+// Exit early if running on Vercel (should not happen, but safety check)
+if (process.env.VERCEL) {
+  console.warn('server.js should not be executed on Vercel. Use api/index.js instead.');
+  process.exit(0);
+}
+
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -22,7 +31,13 @@ app.set('trust proxy', true);
 // --- directories ---
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const SHARES_DIR = path.join(PUBLIC_DIR, 'shares');
-fs.mkdirSync(SHARES_DIR, { recursive: true });
+// Only create directory if it doesn't exist
+try {
+  fs.mkdirSync(SHARES_DIR, { recursive: true });
+} catch (e) {
+  // Directory might already exist, ignore error
+  if (e.code !== 'EEXIST') throw e;
+}
 
 // --- config ---
 const UPLOAD_TARGET = (process.env.UPLOAD_TARGET || 'filesystem').toLowerCase(); // filesystem | dataurl
