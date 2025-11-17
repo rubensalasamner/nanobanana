@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vercel dev",
     "start": "node server.js",
+    "build": "echo 'No build step needed - static files in public/'",
     "lint": "eslint . --ext .js,.html",
     "lint:fix": "eslint . --ext .js,.html --fix"
   },
