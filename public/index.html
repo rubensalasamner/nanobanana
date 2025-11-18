@@ -14,7 +14,7 @@
     <style media="print">
       /* Print styles */
       @page {
-        size: 4in 6in portrait;
+        size: 4in 4in;
         margin: 0.2in;
       }
       body {
@@ -62,20 +62,12 @@
       }
       .stage,
       .result-stage {
-        /* For 4x6 portrait: 4in wide x 6in tall, with 0.2in margins = 3.6in x 5.6in available */
+        /* For 4x4 square: 4in wide x 4in tall, with 0.2in margins = 3.6in x 3.6in available */
         width: 3.6in;
-        height: 5.6in;
+        height: 3.6in;
         max-width: 3.6in;
-        max-height: 5.6in;
-        aspect-ratio: 2 / 3; /* 4:6 = 2:3 portrait ratio */
-        background: #fff;
-        border-radius: 0;
-        overflow: hidden;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin: 0 auto;
-      }
+        max-height: 3.6in;
+        aspect-ratio: 1 / 1; /* Square (1:1) ratio */
       .stage img,
       .result-stage img {
         width: 100%;
