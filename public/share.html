@@ -156,6 +156,16 @@
         transition: opacity 0.2s;
       }
 
+      @media (max-width: 768px) {
+        .share-actions button,
+        .share-actions a.button,
+        .share-links a {
+          padding: 16px 24px;
+          font-size: 20px;
+          min-width: 200px;
+        }
+      }
+
       .share-actions button:hover,
       .share-actions a.button:hover {
         opacity: 0.9;
@@ -247,12 +257,6 @@
         >
           Copy link
         </button>
-        <button
-          id="shareBtn"
-          class="hidden"
-        >
-          Share
-        </button>
       </div>
 
       <div class="share-links">
@@ -296,7 +300,6 @@
       const photoEl = document.getElementById('photo');
       const downloadBtn = document.getElementById('downloadBtn');
       const copyLinkBtn = document.getElementById('copyLink');
-      const shareBtn = document.getElementById('shareBtn');
       const linkedin = document.getElementById('linkedin');
       const instagram = document.getElementById('instagram');
 
@@ -319,12 +322,35 @@
         instagram.addEventListener('click', async (e) => {
           e.preventDefault();
           try {
+            // Try Web Share API with the image file
+            if (navigator.share && navigator.canShare) {
+              const resp = await fetch(imageUrl, { mode: 'cors' });
+              if (!resp.ok) throw new Error('Fetch failed');
+              const blob = await resp.blob();
+              const file = new File([blob], filename, { type: mime });
+              
+              if (navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                  title: 'My edited photo',
+                  text: 'Check out my photo from the Nano Banana booth!',
+                  files: [file],
+                });
+                return;
+              }
+            }
+            // Fallback: try to open Instagram app or copy URL
+            // Instagram doesn't have a direct share URL, so we'll use Web Share API
+            // If that fails, copy the URL
             await navigator.clipboard.writeText(imageUrl);
-            alert('Image URL copied! Download the image and upload it to Instagram.');
-          } catch {
-            alert(
-              'Please copy the image URL manually and download the image to share on Instagram.'
-            );
+            alert('Image URL copied! You can now share it on Instagram.');
+          } catch (err) {
+            console.error('Instagram share failed', err);
+            try {
+              await navigator.clipboard.writeText(imageUrl);
+              alert('Image URL copied! You can now share it on Instagram.');
+            } catch {
+              alert('Please copy the image URL manually and share it on Instagram.');
+            }
           }
         });
 
@@ -364,20 +390,6 @@
           }
         });
 
-        if (navigator.share) {
-          shareBtn.classList.remove('hidden');
-          shareBtn.addEventListener('click', async () => {
-            try {
-              await navigator.share({
-                title: 'My edited photo',
-                text: 'Check out my photo from the Nano Banana booth!',
-                url: imageUrl,
-              });
-            } catch {
-              // no-op
-            }
-          });
-        }
       }
     </script>
   </body>
