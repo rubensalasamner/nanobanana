@@ -2,24 +2,68 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    />
     <title>Your Photo - Nano Banana</title>
-    <meta property="og:title" content="Your Photo - Nano Banana" />
-    <meta property="og:type" content="website" />
-    <link rel="stylesheet" href="./styles.css" />
+    <meta
+      property="og:title"
+      content="Your Photo - Nano Banana"
+    />
+    <meta
+      property="og:type"
+      content="website"
+    />
+    <link
+      rel="stylesheet"
+      href="./styles.css"
+    />
     <style>
       @font-face {
         font-family: 'Google Sans';
-        src: url('./assets/fonts/GoogleSans[GRAD,opsz,wght].ttf') format('truetype-variations');
-        font-weight: 100 900;
+        src: url('./assets/fonts/GoogleSans-Regular.ttf') format('truetype');
+        font-weight: 400;
         font-style: normal;
         font-display: swap;
       }
 
       @font-face {
         font-family: 'Google Sans';
-        src: url('./assets/fonts/GoogleSans-Italic[GRAD,opsz,wght].ttf') format('truetype-variations');
-        font-weight: 100 900;
+        src: url('./assets/fonts/GoogleSans-Medium.ttf') format('truetype');
+        font-weight: 500;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: 'Google Sans';
+        src: url('./assets/fonts/GoogleSans-Bold.ttf') format('truetype');
+        font-weight: 700;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: 'Google Sans';
+        src: url('./assets/fonts/GoogleSans-Italic.ttf') format('truetype');
+        font-weight: 400;
+        font-style: italic;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: 'Google Sans';
+        src: url('./assets/fonts/GoogleSans-MediumItalic.ttf') format('truetype');
+        font-weight: 500;
+        font-style: italic;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: 'Google Sans';
+        src: url('./assets/fonts/GoogleSans-BoldItalic.ttf') format('truetype');
+        font-weight: 700;
         font-style: italic;
         font-display: swap;
       }
@@ -33,7 +77,14 @@
         align-items: center;
         justify-content: center;
         padding: 40px 16px 100px;
-        font-family: 'Google Sans', ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu;
+        font-family:
+          'Google Sans',
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          Ubuntu;
       }
 
       .share-container {
@@ -177,25 +228,62 @@
       </div>
 
       <div class="share-image-container">
-        <img id="photo" alt="Edited result" />
+        <img
+          id="photo"
+          alt="Edited result"
+        />
       </div>
 
       <div class="share-actions">
-        <button id="downloadBtn" class="primary">Download</button>
-        <button id="copyLink" class="secondary">Copy link</button>
-        <button id="shareBtn" class="hidden">Share</button>
+        <button
+          id="downloadBtn"
+          class="primary"
+        >
+          Download
+        </button>
+        <button
+          id="copyLink"
+          class="secondary"
+        >
+          Copy link
+        </button>
+        <button
+          id="shareBtn"
+          class="hidden"
+        >
+          Share
+        </button>
       </div>
 
       <div class="share-links">
-        <a id="linkedin" class="button secondary" target="_blank" rel="noopener">LinkedIn</a>
-        <a id="instagram" class="button secondary" target="_blank" rel="noopener">Instagram</a>
+        <a
+          id="linkedin"
+          class="button secondary"
+          target="_blank"
+          rel="noopener"
+        >
+          LinkedIn
+        </a>
+        <a
+          id="instagram"
+          class="button secondary"
+          target="_blank"
+          rel="noopener"
+        >
+          Instagram
+        </a>
       </div>
     </div>
 
     <div class="step-footer">
-      <img src="./assets/images/Gemini-logo.png" alt="Gemini" class="footer-logo" />
+      <img
+        src="./assets/images/Gemini-logo.png"
+        alt="Gemini"
+        class="footer-logo"
+      />
       <p class="footer-note">
-        Image files are stored temporarily for one (1) hour, after which they are permanently deleted.
+        Image files are stored temporarily for one (1) hour, after which they are permanently
+        deleted.
       </p>
     </div>
 
@@ -215,10 +303,12 @@
       if (!imageUrl) {
         photoEl.alt = 'Missing image';
         photoEl.style.display = 'none';
-        document.querySelector('.share-container').insertAdjacentHTML(
-          'beforeend',
-          '<p style="color:#f87171">Image URL was not provided. Please return to the kiosk and try again.</p>'
-        );
+        document
+          .querySelector('.share-container')
+          .insertAdjacentHTML(
+            'beforeend',
+            '<p style="color:#f87171">Image URL was not provided. Please return to the kiosk and try again.</p>'
+          );
       } else {
         photoEl.src = imageUrl;
         const ext = mime === 'image/png' ? 'png' : mime === 'image/jpeg' ? 'jpg' : 'webp';
@@ -232,7 +322,9 @@
             await navigator.clipboard.writeText(imageUrl);
             alert('Image URL copied! Download the image and upload it to Instagram.');
           } catch {
-            alert('Please copy the image URL manually and download the image to share on Instagram.');
+            alert(
+              'Please copy the image URL manually and download the image to share on Instagram.'
+            );
           }
         });
 
@@ -290,4 +382,3 @@
     </script>
   </body>
 </html>
-

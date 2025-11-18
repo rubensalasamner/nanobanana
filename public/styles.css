@@ -1,15 +1,47 @@
 @font-face {
   font-family: 'Google Sans';
-  src: url('./assets/fonts/GoogleSans[GRAD,opsz,wght].ttf') format('truetype-variations');
-  font-weight: 100 900;
+  src: url('./assets/fonts/GoogleSans-Regular.ttf') format('truetype');
+  font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 
 @font-face {
   font-family: 'Google Sans';
-  src: url('./assets/fonts/GoogleSans-Italic[GRAD,opsz,wght].ttf') format('truetype-variations');
-  font-weight: 100 900;
+  src: url('./assets/fonts/GoogleSans-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Google Sans';
+  src: url('./assets/fonts/GoogleSans-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Google Sans';
+  src: url('./assets/fonts/GoogleSans-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Google Sans';
+  src: url('./assets/fonts/GoogleSans-MediumItalic.ttf') format('truetype');
+  font-weight: 500;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Google Sans';
+  src: url('./assets/fonts/GoogleSans-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
   font-style: italic;
   font-display: swap;
 }
@@ -77,15 +109,19 @@ body {
 .style-container,
 .result-container {
   width: 100%;
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
-  padding: 40px 16px 32px;
+  justify-content: flex-end;
+  padding: 0 16px 120px;
 }
 
-.camera-simple-headline,
+.camera-simple-headline {
+  text-align: center;
+  margin: 0 0 32px 0;
+}
+
 .style-container,
 .result-container {
   text-align: center;
@@ -98,10 +134,20 @@ body {
   color: var(--accent);
 }
 
+.result-container .camera-brand {
+  margin-bottom: 8px;
+}
+
 .camera-title,
-.style-title,
-.result-title {
+.style-title {
   margin: 0 0 4px 0;
+  font-size: clamp(36px, 5vw, 48px);
+  color: #000;
+  font-weight: 400;
+}
+
+.result-title {
+  margin: 0 0 32px 0;
   font-size: clamp(36px, 5vw, 48px);
   color: #000;
   font-weight: 400;
@@ -111,8 +157,10 @@ body {
   width: 100%;
   display: flex;
   justify-content: center;
-  align-items: flex-start;
+  align-items: center;
   gap: 24px;
+  min-height: auto;
+  padding: 0;
 }
 
 .style-grid {
@@ -161,6 +209,7 @@ body {
   place-items: center;
   overflow: hidden;
   position: relative;
+  margin-bottom: 48px;
 }
 
 .result-stage img {
@@ -172,14 +221,18 @@ body {
 }
 
 .result-stage .ai-overlay {
-  position: absolute;
-  bottom: 16px;
-  right: 16px;
-  width: 64px;
-  height: 64px;
-  z-index: 10;
+  position: absolute !important;
+  bottom: 32px !important;
+  right: 32px !important;
+  top: auto !important;
+  left: auto !important;
+  width: 120px;
+  height: 120px;
+  z-index: 20;
   pointer-events: none;
   opacity: 0.9;
+  object-fit: contain;
+  margin: 0;
 }
 
 .result-actions {
@@ -188,6 +241,48 @@ body {
   gap: 16px;
   justify-content: center;
   margin-bottom: 40px;
+}
+
+.printing-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  margin-top: 24px;
+  margin-bottom: 24px;
+}
+
+.printing-message.hidden {
+  display: none;
+}
+
+.printing-text {
+  font-size: 24px;
+  color: #000;
+  margin: 0;
+  font-weight: 700;
+}
+
+.printing-arrow {
+  font-size: 48px;
+  color: #4285f4;
+  line-height: 1;
+  animation: bounce 1s infinite;
+}
+
+@keyframes bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(10px);
+  }
+}
+
+.result-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .pill-btn {
@@ -467,27 +562,40 @@ img {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: flex-end;
   position: relative;
-  padding-top: 15%;
+  padding: 0 16px 120px;
 }
 
 .welcome-content {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 16px;
   position: relative;
 }
 
+.welcome-title {
+  font-size: clamp(48px, 6vw, 72px);
+  font-weight: 700;
+  color: #4285f4;
+  margin: 0;
+  text-align: center;
+}
+
 .welcome-text {
-  font-size: 24px;
+  font-size: clamp(28px, 3.5vw, 36px);
   color: #000;
   margin: 0;
   text-align: center;
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  line-height: 1.5;
+}
+
+.banana-emoji {
+  font-size: clamp(48px, 6vw, 72px);
+  display: inline-block;
+  vertical-align: middle;
+  line-height: 1;
 }
 
 .banana-icon {

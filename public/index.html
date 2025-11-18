@@ -52,7 +52,8 @@
       .result-actions,
       .ai-overlay,
       .camera-brand,
-      .result-title {
+      .result-title,
+      .printing-message {
         display: none !important;
       }
       #step-result {
@@ -93,6 +94,7 @@
     <div
       class="step-nav"
       id="stepNav"
+      style="display: none"
     >
       <button data-step="screensaver">Screensaver</button>
       <button data-step="welcome">Welcome</button>
@@ -203,6 +205,13 @@ Maintain accurate facial likeness and identity. No added text or signatures."
             Print
           </button>
         </div>
+        <div
+          id="printingMessage"
+          class="printing-message hidden"
+        >
+          <p class="printing-text">Printing...</p>
+          <div class="printing-arrow">↓</div>
+        </div>
         <button
           id="btnRestart"
           class="pill-btn outline"
@@ -238,14 +247,15 @@ Maintain accurate facial likeness and identity. No added text or signatures."
     >
       <div class="welcome-container">
         <div class="welcome-content">
-          <h2 class="style-title">
+          <h1 class="welcome-title">Go Bananas</h1>
+          <p class="welcome-text">
             Try out Nano Banana
-            <img
-              src="./assets/images/banana.svg"
-              alt="🍌"
-              class="banana-icon"
-            />
-          </h2>
+            <span class="banana-emoji">🍌</span>
+            <br />
+            - Image generating and
+            <br />
+            photo editor in Gemini
+          </p>
           <button
             id="btnStartHere"
             class="primary welcome-button"

@@ -36,6 +36,7 @@ const btnChangeStyle = document.getElementById('btnChangeStyle');
 const btnShareResult = document.getElementById('btnShareResult');
 const btnPrintResult = document.getElementById('btnPrintResult');
 const btnRestart = document.getElementById('btnRestart');
+const printingMessage = document.getElementById('printingMessage');
 const stepFooter = document.querySelector('.step-footer');
 const styleTitle = document.querySelector('.style-title');
 
@@ -421,7 +422,27 @@ if (btnShareResult) {
 if (btnPrintResult) {
   onTap(btnPrintResult, () => {
     if (btnPrintResult.disabled) return;
+
+    // Show printing message and grey out button
+    if (printingMessage) {
+      printingMessage.classList.remove('hidden');
+    }
+    btnPrintResult.disabled = true;
+    btnPrintResult.style.opacity = '0.5';
+    btnPrintResult.style.cursor = 'not-allowed';
+
+    // Trigger print dialog
     window.print();
+
+    // Hide printing message after print dialog closes (or after a delay)
+    setTimeout(() => {
+      if (printingMessage) {
+        printingMessage.classList.add('hidden');
+      }
+      btnPrintResult.disabled = false;
+      btnPrintResult.style.opacity = '';
+      btnPrintResult.style.cursor = '';
+    }, 2000);
   });
 }
 if (btnRestart) {
