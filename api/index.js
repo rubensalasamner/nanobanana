@@ -242,10 +242,15 @@ async function handleEditAndShare(req, res, reqId) {
   let outMime = outImg.mime;
 
   if (UPLOAD_TARGET === 'blob') {
-    // Convert image buffer to optimized WebP (~80% quality)
+    // Convert image buffer to high-quality WebP for 300dpi printing
+    // Using 1200x1200 (1:1) for square format - good for 300dpi printing (4in x 4in at 300dpi = 1200px)
     const webpBuf = await sharp(outImg.buf)
       .rotate() // auto-orient if needed
-      .toFormat('webp', { quality: 80 })
+      .resize(1200, 1200, {
+        fit: 'fill', // Force exact 1200x1200 dimensions (no cropping, upscales if needed)
+        withoutEnlargement: false, // Allow upscaling if needed
+      })
+      .toFormat('webp', { quality: 95 }) // High quality for printing
       .toBuffer();
 
     const filename = `shares/${id}.webp`;

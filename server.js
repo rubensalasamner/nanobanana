@@ -241,9 +241,15 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
       imageUrl = `data:${outMime};base64,${outBuffer.toString('base64')}`;
       console.log('Returning data URL image (UPLOAD_TARGET=dataurl)');
     } else {
+      // Convert to high-quality WebP for 300dpi printing
+      // Using 1200x1200 (1:1) for square format - good for 300dpi printing (4in x 4in at 300dpi = 1200px)
       const webpBuffer = await sharp(outBuffer)
         .rotate()
-        .toFormat('webp', { quality: 80 })
+        .resize(1200, 1200, {
+          fit: 'fill', // Force exact 1200x1200 dimensions (no cropping, upscales if needed)
+          withoutEnlargement: false, // Allow upscaling if needed
+        })
+        .toFormat('webp', { quality: 95 }) // High quality for printing
         .toBuffer();
       outBuffer = webpBuffer;
       outMime = 'image/webp';

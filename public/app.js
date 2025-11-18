@@ -50,6 +50,7 @@ let currentStep = 'screensaver';
 let idleTimer = null;
 const IDLE_TIMEOUT = 600000; // 10 minutes in milliseconds
 let isTakingSnapshot = false; // Prevent auto-taking pictures
+let styleStepClickBlocked = false; // Block clicks on style step immediately after navigation
 
 const wizardSteps = {
   screensaver: stepScreensaver,
@@ -83,6 +84,11 @@ function showStep(stepName) {
     if (stylePreview) {
       stylePreview.classList.add('hidden');
     }
+    // Block clicks for a short time after navigating to prevent accidental selection from previous button click
+    styleStepClickBlocked = true;
+    setTimeout(() => {
+      styleStepClickBlocked = false;
+    }, 300); // 300ms should be enough to prevent the click event from registering
   }
 
   if (stepName === 'result' && resultPhoto && resultPhoto.src) {
@@ -398,7 +404,7 @@ async function takeSnapshot() {
 
   // Downscale cropped image for upload
   const MAX = 1600; // long edge
-  const scale = Math.min(1, MAX / cropTargetH); // cropTargetH is the longer edge
+  const scale = Math.min(1, MAX / cropTargetH); // cropTargetH is the longer edge for 1:1
   const upW = Math.round(cropTargetW * scale);
   const upH = Math.round(cropTargetH * scale);
 
@@ -481,6 +487,13 @@ function restartFlow() {
 function handlePresetTap(e) {
   const btn = e.target.closest('[data-prompt]');
   if (!btn) return;
+
+  // Block clicks immediately after navigating to style step (prevents accidental selection from change style button click)
+  if (styleStepClickBlocked) {
+    e.preventDefault();
+    e.stopPropagation();
+    return;
+  }
 
   // Don't allow clicking if already applying or if button is disabled
   if (isApplying || btn.disabled) return;
@@ -703,7 +716,12 @@ if (grid) {
 }
 
 if (btnChangeStyle) {
-  onTap(btnChangeStyle, () => {
+  onTap(btnChangeStyle, (e) => {
+    // Stop event propagation to prevent the click from registering on the style page
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     // Reset style step state
     selectedPrompt = null;
     isApplying = false; // Reset applying flag
@@ -722,10 +740,13 @@ if (btnChangeStyle) {
 
         // Check if card has a spinner (either as element or in innerHTML)
         const hasSpinnerElement = el.querySelector('.style-card-spinner') !== null;
-        const hasSpinnerInHTML = el.innerHTML.includes('style-card-spinner') || el.innerHTML.includes('spinner');
+        const hasSpinnerInHTML =
+          el.innerHTML.includes('style-card-spinner') || el.innerHTML.includes('spinner');
         const innerHTMLTrimmed = el.innerHTML.trim();
-        const isOnlySpinner = hasSpinnerElement || hasSpinnerInHTML || 
-          (innerHTMLTrimmed === '<span class="style-card-spinner"></span>') ||
+        const isOnlySpinner =
+          hasSpinnerElement ||
+          hasSpinnerInHTML ||
+          innerHTMLTrimmed === '<span class="style-card-spinner"></span>' ||
           (innerHTMLTrimmed.startsWith('<span') && innerHTMLTrimmed.includes('spinner'));
 
         // ALWAYS restore card text if it has originalText stored OR if it has a spinner
@@ -748,7 +769,7 @@ if (btnChangeStyle) {
             restoredText = 'Professional headshot';
           else if (prompt.includes('painting') || prompt.includes('Impressionist'))
             restoredText = 'Photo to painting';
-          
+
           el.innerHTML = restoredText;
           // Store this as originalText for future use
           el.dataset.originalText = restoredText;
@@ -769,7 +790,9 @@ if (btnChangeStyle) {
 
     // Reset API status
     if (apiStatus) {
-      apiStatus.textContent = latestBlob ? 'Take a picture, pick a preset, then apply.' : 'Take a picture first.';
+      apiStatus.textContent = latestBlob
+        ? 'Take a picture, pick a preset, then apply.'
+        : 'Take a picture first.';
     }
 
     // Restore title when navigating back to style step
