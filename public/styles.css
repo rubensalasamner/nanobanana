@@ -232,6 +232,22 @@ body {
   animation: spin 0.8s linear infinite;
 }
 
+.camera-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  display: inline-block;
+  animation: spin 0.8s linear infinite;
+  margin-left: 12px;
+  vertical-align: middle;
+}
+
+.camera-spinner.hidden {
+  display: none;
+}
+
 .result-stage {
   width: min(420px, 90vw);
   aspect-ratio: 1 / 1;
@@ -269,8 +285,8 @@ body {
 
 .result-stage .ai-overlay {
   position: absolute !important;
-  bottom: 32px !important;
-  right: 32px !important;
+  bottom: 1px !important;
+  right: 2px !important;
   top: auto !important;
   left: auto !important;
   width: 120px;

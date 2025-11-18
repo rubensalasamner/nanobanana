@@ -7,6 +7,8 @@ const apiStatus = document.getElementById('apiStatus');
 
 const btnStart = document.getElementById('btnStart');
 const btnSnap = document.getElementById('btnSnap');
+const btnSnapText = document.getElementById('btnSnapText');
+const btnSnapSpinner = document.getElementById('btnSnapSpinner');
 const btnRetake = document.getElementById('btnRetake');
 const btnApply = document.getElementById('btnApply');
 const btnDownload = document.getElementById('btnDownload');
@@ -73,9 +75,9 @@ function showStep(stepName) {
     if (styleTitle) {
       styleTitle.textContent = 'Choose your style';
     }
-    // Show cropped image preview if available
-    if (stylePreview && stylePreview.src) {
-      stylePreview.classList.remove('hidden');
+    // Don't show cropped image preview
+    if (stylePreview) {
+      stylePreview.classList.add('hidden');
     }
   }
 
@@ -151,11 +153,11 @@ setInterval(() => fetch('/api/cleanup').catch(() => {}), 60 * 60 * 1000);
 
 // ----- Helpers -----
 /**
- * Crop image to target aspect ratio (2:3 for 4x6 portrait)
+ * Fit image to target aspect ratio (2:3 for 4x6 portrait) with padding instead of cropping
  * @param {HTMLImageElement | HTMLVideoElement} image - Source image or video element
  * @param {number} targetW - Target width
  * @param {number} targetH - Target height
- * @returns {string} - Base64 data URL of cropped image
+ * @returns {string} - Base64 data URL of fitted image
  */
 function cropToAspectRatio(image, targetW, targetH) {
   const inputW = image.videoWidth || image.width;
@@ -163,31 +165,39 @@ function cropToAspectRatio(image, targetW, targetH) {
   const inputRatio = inputW / inputH;
   const targetRatio = targetW / targetH;
 
-  // Determine cropping box
-  let cropW, cropH, cropX, cropY;
+  // Calculate scale to fit entire image within target dimensions
+  let scale, drawW, drawH, offsetX, offsetY;
 
   if (inputRatio > targetRatio) {
-    // Input is wider → crop horizontally
-    cropH = inputH;
-    cropW = inputH * targetRatio;
-    cropX = (inputW - cropW) / 2;
-    cropY = 0;
+    // Input is wider → fit to width, add padding top/bottom
+    scale = targetW / inputW;
+    drawW = targetW;
+    drawH = inputH * scale;
+    offsetX = 0;
+    offsetY = (targetH - drawH) / 2;
   } else {
-    // Input is taller → crop vertically
-    cropW = inputW;
-    cropH = inputW / targetRatio;
-    cropX = 0;
-    cropY = (inputH - cropH) / 2;
+    // Input is taller → fit to height, add padding left/right
+    scale = targetH / inputH;
+    drawW = inputW * scale;
+    drawH = targetH;
+    offsetX = (targetW - drawW) / 2;
+    offsetY = 0;
   }
 
-  // Draw into canvas
+  // Draw into canvas with padding
   const canvas = document.createElement('canvas');
   canvas.width = targetW;
   canvas.height = targetH;
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(image, cropX, cropY, cropW, cropH, 0, 0, targetW, targetH);
 
-  return canvas.toDataURL('image/jpeg', 0.9); // base64 for sending to Gemini
+  // Fill with white background (or black if you prefer)
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, targetW, targetH);
+
+  // Draw the scaled image centered
+  ctx.drawImage(image, offsetX, offsetY, drawW, drawH);
+
+  return canvas.toDataURL('image/jpeg', 0.9);
 }
 
 function onTap(el, handler) {
@@ -238,6 +248,17 @@ async function startCamera() {
     // Reset snapshot flag when starting camera
     isTakingSnapshot = false;
 
+    // Disable button and show spinner while loading
+    if (btnSnap) {
+      btnSnap.disabled = true;
+    }
+    if (btnSnapSpinner) {
+      btnSnapSpinner.classList.remove('hidden');
+    }
+    if (btnSnapText) {
+      btnSnapText.textContent = 'Loading camera...';
+    }
+
     if (stream) stream.getTracks().forEach((t) => t.stop());
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
@@ -274,7 +295,17 @@ async function startCamera() {
     video.classList.remove('hidden');
     canvas.classList.add('hidden');
     photo.classList.add('hidden');
-    btnSnap.disabled = false;
+
+    // Hide spinner and enable button when camera is ready
+    if (btnSnapSpinner) {
+      btnSnapSpinner.classList.add('hidden');
+    }
+    if (btnSnapText) {
+      btnSnapText.textContent = 'Take picture';
+    }
+    if (btnSnap) {
+      btnSnap.disabled = false;
+    }
     btnRetake.classList.add('hidden');
 
     // Ensure snapshot flag is reset when camera is ready
@@ -287,6 +318,17 @@ async function startCamera() {
   } catch (e) {
     // Reset flag on error
     isTakingSnapshot = false;
+    // Hide spinner on error
+    if (btnSnapSpinner) {
+      btnSnapSpinner.classList.add('hidden');
+    }
+    if (btnSnapText) {
+      btnSnapText.textContent = 'Take picture';
+    }
+    // Keep button disabled on error
+    if (btnSnap) {
+      btnSnap.disabled = true;
+    }
     camStatus.textContent = 'Camera error: ' + e.message;
   }
 }
@@ -334,7 +376,13 @@ async function takeSnapshot() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.drawImage(video, 0, 0, vw, vh);
 
-  // Crop to 4x6 portrait (2:3 aspect ratio) before downscaling
+  // Show the original photo (not cropped) in the camera step
+  photo.src = canvas.toDataURL('image/jpeg', 0.9);
+  video.classList.add('hidden');
+  canvas.classList.add('hidden');
+  photo.classList.remove('hidden');
+
+  // Crop to 4x6 portrait (2:3 aspect ratio) for API in the background
   // Use a reasonable size for cropping, then downscale for upload
   const cropTargetW = 1200; // Target width for 2:3 ratio
   const cropTargetH = 1800; // Target height for 2:3 ratio (1200 * 3/2 = 1800)
@@ -346,7 +394,7 @@ async function takeSnapshot() {
   const upW = Math.round(cropTargetW * scale);
   const upH = Math.round(cropTargetH * scale);
 
-  // Convert cropped data URL to blob for upload
+  // Convert cropped data URL to blob for upload (in background)
   const croppedImg = new Image();
   croppedImg.onload = () => {
     const tmp = document.createElement('canvas');
@@ -364,16 +412,10 @@ async function takeSnapshot() {
   };
   croppedImg.src = croppedDataUrl;
 
-  // Preview in UI - show cropped version
-  photo.src = croppedDataUrl;
-
-  // Store cropped image for style step preview
+  // Store cropped image for style step preview (but don't show it)
   if (stylePreview) {
     stylePreview.src = croppedDataUrl;
   }
-  video.classList.add('hidden');
-  canvas.classList.add('hidden');
-  photo.classList.remove('hidden');
   btnRetake.classList.remove('hidden');
   btnApply.disabled = !selectedPrompt;
   camStatus.textContent = 'Snapshot captured.';
@@ -654,10 +696,64 @@ if (grid) {
 
 if (btnChangeStyle) {
   onTap(btnChangeStyle, () => {
+    // Reset style step state
+    selectedPrompt = null;
+    isApplying = false; // Reset applying flag
+
+    // Clear all style card outlines and restore cards
+    if (grid) {
+      grid.querySelectorAll('[data-prompt]').forEach((el) => {
+        el.style.outline = '';
+        // Re-enable any disabled cards
+        el.disabled = false;
+
+        // Check if card has a spinner (either as element or in innerHTML)
+        const hasSpinnerElement = el.querySelector('.style-card-spinner') !== null;
+        const hasSpinnerInHTML = el.innerHTML.includes('style-card-spinner');
+
+        // Restore card text if it has a spinner or if originalText is stored
+        if (hasSpinnerElement || hasSpinnerInHTML || el.dataset.originalText) {
+          // If we have stored originalText, use it
+          if (el.dataset.originalText) {
+            el.innerHTML = el.dataset.originalText;
+            // Keep originalText stored for future use, don't delete it
+          } else {
+            // Fallback: try to extract from prompt based on known patterns
+            const prompt = el.dataset.prompt || '';
+            if (prompt.includes('figurine')) el.innerHTML = '3D figurine';
+            else if (prompt.includes('yearbook')) el.innerHTML = "1980's yearbook";
+            else if (prompt.includes('Polaroid') || prompt.includes('instant-camera'))
+              el.innerHTML = 'Polaroid';
+            else if (prompt.includes('Hairstyle') || prompt.includes('hair'))
+              el.innerHTML = 'Hairstyle change';
+            else if (prompt.includes('headshot') || prompt.includes('LinkedIn'))
+              el.innerHTML = 'Professional headshot';
+            else if (prompt.includes('painting') || prompt.includes('Impressionist'))
+              el.innerHTML = 'Photo to painting';
+            else el.innerHTML = 'Style';
+            // Store this as originalText for future use
+            el.dataset.originalText = el.innerHTML;
+          }
+        }
+      });
+    }
+
+    // Reset apply button state
+    if (btnApply) {
+      btnApply.disabled = false;
+    }
+    if (applyText) {
+      applyText.textContent = 'Apply preset';
+    }
+    if (applySpinner) {
+      applySpinner.classList.add('hidden');
+    }
+
     // Restore title when navigating back to style step
     if (styleTitle) {
       styleTitle.textContent = 'Choose your style';
     }
+
     showStep('style');
   });
 }
