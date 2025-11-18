@@ -393,7 +393,7 @@ async function takeSnapshot() {
   // Crop to 4x6 portrait (2:3 aspect ratio) for API in the background
   // Use a reasonable size for cropping, then downscale for upload
   const cropTargetW = 1200; // Target width for 2:3 ratio
-  const cropTargetH = 1800; // Target height for 2:3 ratio (1200 * 3/2 = 1800)
+  const cropTargetH = 1200; // Target height for 2:3 ratio (1200 * 3/2 = 1800)
   const croppedDataUrl = cropToAspectRatio(video, cropTargetW, cropTargetH);
 
   // Downscale cropped image for upload
