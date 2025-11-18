@@ -149,7 +149,7 @@ async function runGeminiEdit(fileMime, fileBuf, prompt, templateImageBuf = null)
     contents,
     config: {
       imageConfig: {
-        aspectRatio: '2:3', // 4x6 portrait (4:6 = 2:3) - standing/vertical
+        aspectRatio: '1:1', // Square (1:1) ratio
       },
     },
   });
@@ -218,15 +218,12 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
     const fileSize = req.file.buffer.length;
     if (fileSize > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Image too large' });
 
-    // Load 4x6 black template image
-    const templateImageBuf = await load4x6BlackImage();
-
     // Combine original prompt with aspect ratio instruction
-    const prompt = `${originalPrompt}\n\nRedraw the content from image 1 onto image 2, and adjust image 1 by adding content so that its aspect ratio matches image 2. At the same time, completely remove the content of image 2, keeping only its aspect ratio. Make sure no blank areas are left.`;
+    const prompt = `${originalPrompt}\n\nRedraw the content from image 1 in a 1:1 square aspect ratio. Adjust image 1 by adding content as needed to fill a perfect square (1:1) format. Make sure no blank areas are left.`;
 
     console.log(`Editing (and sharing) image with prompt: "${originalPrompt}"`);
 
-    const img = await runGeminiEdit(req.file.mimetype, req.file.buffer, prompt, templateImageBuf);
+    const img = await runGeminiEdit(req.file.mimetype, req.file.buffer, prompt, null);
     if (!img) {
       console.warn('No image returned by Gemini');
       return res.status(422).json({ error: 'Model returned no image' });

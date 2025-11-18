@@ -147,7 +147,7 @@ async function runGeminiEdit(fileMime, fileBuf, prompt, reqId, templateImageBuf 
       inlineData: { mimeType: fileMime || 'image/jpeg', data: fileBuf.toString('base64') },
     });
 
-    // Add template image (4x6 black) as image 2 if provided
+    // Add template image (black) as image 2 if provided
     if (templateImageBuf) {
       contents.push({
         inlineData: { mimeType: 'image/png', data: templateImageBuf.toString('base64') },
@@ -159,7 +159,7 @@ async function runGeminiEdit(fileMime, fileBuf, prompt, reqId, templateImageBuf 
       contents,
       config: {
         imageConfig: {
-          aspectRatio: '1:1', // 4x6 portrait (4:6 = 2:3) - standing/vertical
+          aspectRatio: '1:1', // Square (1:1) ratio
         },
       },
     });
@@ -217,20 +217,17 @@ async function handleEditAndShare(req, res, reqId) {
   const originalPrompt = String(fields.prompt ?? '');
   if (!originalPrompt) return res.status(400).json({ error: 'Missing prompt' });
 
-  // Load 4x6 black template image
-  const templateImageBuf = await load4x6BlackImage();
-
   // Combine original prompt with aspect ratio instruction
-  const prompt = `${originalPrompt}\n\nRedraw the content from image 1 onto image 2, and adjust image 1 by adding content so that its aspect ratio matches image 2. At the same time, completely remove the content of image 2, keeping only its aspect ratio. Make sure no blank areas are left.`;
+  const prompt = `${originalPrompt}\n\nRedraw the content from image 1 in a 1:1 square aspect ratio. Adjust image 1 by adding content as needed to fill a perfect square (1:1) format. Make sure no blank areas are left.`;
 
   log(reqId, 'log', 'gemini.request', {
     model: 'gemini-2.5-flash-image',
     mime: fileMime,
     size: fileSize,
     promptLength: prompt.length,
-    hasTemplate: true,
+    hasTemplate: false,
   });
-  const outImg = await runGeminiEdit(fileMime, fileBuf, prompt, reqId, templateImageBuf);
+  const outImg = await runGeminiEdit(fileMime, fileBuf, prompt, reqId, null);
   if (!outImg) {
     log(reqId, 'error', 'gemini.noImage', { prompt: prompt.substring(0, 100) });
     return res.status(422).json({

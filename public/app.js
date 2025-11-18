@@ -161,7 +161,7 @@ setInterval(() => fetch('/api/cleanup').catch(() => {}), 60 * 60 * 1000);
 
 // ----- Helpers -----
 /**
- * Fit image to target aspect ratio (2:3 for 4x6 portrait) with padding instead of cropping
+ * Fit image to target aspect ratio with padding instead of cropping
  * @param {HTMLImageElement | HTMLVideoElement} image - Source image or video element
  * @param {number} targetW - Target width
  * @param {number} targetH - Target height
@@ -390,10 +390,10 @@ async function takeSnapshot() {
   canvas.classList.add('hidden');
   photo.classList.remove('hidden');
 
-  // Crop to 4x6 portrait (2:3 aspect ratio) for API in the background
+  // Crop to 1:1 square aspect ratio for API in the background
   // Use a reasonable size for cropping, then downscale for upload
-  const cropTargetW = 1200; // Target width for 2:3 ratio
-  const cropTargetH = 1200; // Target height for 2:3 ratio (1200 * 3/2 = 1800)
+  const cropTargetW = 1200; // Target width for 1:1 ratio
+  const cropTargetH = 1200; // Target height for 1:1 ratio
   const croppedDataUrl = cropToAspectRatio(video, cropTargetW, cropTargetH);
 
   // Downscale cropped image for upload
@@ -711,50 +711,55 @@ if (btnChangeStyle) {
     // Clear all style card outlines and restore cards
     if (grid) {
       grid.querySelectorAll('[data-prompt]').forEach((el) => {
+        // Always clear outline
         el.style.outline = '';
-        // Re-enable any disabled cards
+        // Always re-enable cards
         el.disabled = false;
 
         // Check if card has a spinner (either as element or in innerHTML)
         const hasSpinnerElement = el.querySelector('.style-card-spinner') !== null;
-        const hasSpinnerInHTML = el.innerHTML.includes('style-card-spinner');
+        const hasSpinnerInHTML = el.innerHTML.includes('style-card-spinner') || el.innerHTML.includes('spinner');
 
-        // Restore card text if it has a spinner or if originalText is stored
-        if (hasSpinnerElement || hasSpinnerInHTML || el.dataset.originalText) {
-          // If we have stored originalText, use it
-          if (el.dataset.originalText) {
-            el.innerHTML = el.dataset.originalText;
-            // Keep originalText stored for future use, don't delete it
-          } else {
-            // Fallback: try to extract from prompt based on known patterns
-            const prompt = el.dataset.prompt || '';
-            if (prompt.includes('figurine')) el.innerHTML = '3D figurine';
-            else if (prompt.includes('yearbook')) el.innerHTML = "1980's yearbook";
-            else if (prompt.includes('Polaroid') || prompt.includes('instant-camera'))
-              el.innerHTML = 'Polaroid';
-            else if (prompt.includes('Hairstyle') || prompt.includes('hair'))
-              el.innerHTML = 'Hairstyle change';
-            else if (prompt.includes('headshot') || prompt.includes('LinkedIn'))
-              el.innerHTML = 'Professional headshot';
-            else if (prompt.includes('painting') || prompt.includes('Impressionist'))
-              el.innerHTML = 'Photo to painting';
-            else el.innerHTML = 'Style';
-            // Store this as originalText for future use
-            el.dataset.originalText = el.innerHTML;
-          }
+        // Always restore card text if it has a spinner or if originalText is stored
+        // Priority: use originalText if available, otherwise detect spinner and restore
+        if (el.dataset.originalText) {
+          // If we have stored originalText, always use it to restore
+          el.innerHTML = el.dataset.originalText;
+          // Keep originalText stored for future use, don't delete it
+        } else if (hasSpinnerElement || hasSpinnerInHTML) {
+          // Card has spinner but no stored originalText - restore from prompt
+          const prompt = el.dataset.prompt || '';
+          if (prompt.includes('figurine')) el.innerHTML = '3D figurine';
+          else if (prompt.includes('yearbook')) el.innerHTML = "1980's yearbook";
+          else if (prompt.includes('Polaroid') || prompt.includes('instant-camera'))
+            el.innerHTML = 'Polaroid';
+          else if (prompt.includes('Hairstyle') || prompt.includes('hair'))
+            el.innerHTML = 'Hairstyle change';
+          else if (prompt.includes('headshot') || prompt.includes('LinkedIn'))
+            el.innerHTML = 'Professional headshot';
+          else if (prompt.includes('painting') || prompt.includes('Impressionist'))
+            el.innerHTML = 'Photo to painting';
+          else el.innerHTML = 'Style';
+          // Store this as originalText for future use
+          el.dataset.originalText = el.innerHTML;
         }
       });
     }
 
-    // Reset apply button state
+    // Reset apply button state - set disabled based on whether image is available
     if (btnApply) {
-      btnApply.disabled = false;
+      btnApply.disabled = !latestBlob; // Disable only if no image available
     }
     if (applyText) {
       applyText.textContent = 'Apply preset';
     }
     if (applySpinner) {
       applySpinner.classList.add('hidden');
+    }
+
+    // Reset API status
+    if (apiStatus) {
+      apiStatus.textContent = latestBlob ? 'Take a picture, pick a preset, then apply.' : 'Take a picture first.';
     }
 
     // Restore title when navigating back to style step
