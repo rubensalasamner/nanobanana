@@ -84,8 +84,24 @@ function showStep(stepName) {
     if (stylePreview) {
       stylePreview.classList.add('hidden');
     }
+    // Clear all style card selections and focus immediately
+    if (grid) {
+      grid.querySelectorAll('[data-prompt]').forEach((el) => {
+        el.style.outline = '';
+        el.blur(); // Remove focus to prevent focus outline
+      });
+    }
     // Block clicks for a short time after navigating to prevent accidental selection from previous button click
     styleStepClickBlocked = true;
+    // Use requestAnimationFrame to ensure clearing happens after any potential style application
+    requestAnimationFrame(() => {
+      if (grid) {
+        grid.querySelectorAll('[data-prompt]').forEach((el) => {
+          el.style.outline = '';
+          el.blur();
+        });
+      }
+    });
     setTimeout(() => {
       styleStepClickBlocked = false;
     }, 300); // 300ms should be enough to prevent the click event from registering
@@ -396,15 +412,15 @@ async function takeSnapshot() {
   canvas.classList.add('hidden');
   photo.classList.remove('hidden');
 
-  // Crop to 1:1 square aspect ratio for API in the background
+  // Crop to 16:9 widescreen aspect ratio for API in the background
   // Use a reasonable size for cropping, then downscale for upload
-  const cropTargetW = 1200; // Target width for 1:1 ratio
-  const cropTargetH = 1200; // Target height for 1:1 ratio
+  const cropTargetW = 2133; // Target width for 16:9 ratio
+  const cropTargetH = 1200; // Target height for 16:9 ratio
   const croppedDataUrl = cropToAspectRatio(video, cropTargetW, cropTargetH);
 
   // Downscale cropped image for upload
   const MAX = 1600; // long edge
-  const scale = Math.min(1, MAX / cropTargetH); // cropTargetH is the longer edge for 1:1
+  const scale = Math.min(1, MAX / cropTargetW); // cropTargetW is the longer edge for 16:9
   const upW = Math.round(cropTargetW * scale);
   const upH = Math.round(cropTargetH * scale);
 
@@ -485,15 +501,22 @@ function restartFlow() {
 
 // ----- Presets -----
 function handlePresetTap(e) {
-  const btn = e.target.closest('[data-prompt]');
-  if (!btn) return;
-
   // Block clicks immediately after navigating to style step (prevents accidental selection from change style button click)
   if (styleStepClickBlocked) {
     e.preventDefault();
     e.stopPropagation();
+    e.stopImmediatePropagation();
+    // Clear any visual state that might have been set
+    const btn = e.target.closest('[data-prompt]');
+    if (btn) {
+      btn.style.outline = '';
+      btn.blur();
+    }
     return;
   }
+
+  const btn = e.target.closest('[data-prompt]');
+  if (!btn) return;
 
   // Don't allow clicking if already applying or if button is disabled
   if (isApplying || btn.disabled) return;
@@ -721,6 +744,7 @@ if (btnChangeStyle) {
     if (e) {
       e.preventDefault();
       e.stopPropagation();
+      e.stopImmediatePropagation();
     }
     // Reset style step state
     selectedPrompt = null;
