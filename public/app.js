@@ -33,6 +33,7 @@ const btnStartHere = document.getElementById('btnStartHere');
 const stepNav = document.getElementById('stepNav');
 const stepStyle = document.getElementById('step-style');
 const stepResult = document.getElementById('step-result');
+const stepShare = document.getElementById('step-share');
 const resultPhoto = document.getElementById('resultPhoto');
 const btnChangeStyle = document.getElementById('btnChangeStyle');
 const btnShareResult = document.getElementById('btnShareResult');
@@ -42,6 +43,8 @@ const printingMessage = document.getElementById('printingMessage');
 const stepFooter = document.querySelector('.step-footer');
 const styleTitle = document.querySelector('.style-title');
 const stylePreview = document.getElementById('stylePreview');
+const shareQRCode = document.getElementById('shareQRCode');
+const btnBackFromShare = document.getElementById('btnBackFromShare');
 
 let currentStep = 'screensaver';
 let idleTimer = null;
@@ -54,6 +57,7 @@ const wizardSteps = {
   camera: stepCamera,
   style: stepStyle,
   result: stepResult,
+  share: stepShare,
 };
 
 function showStep(stepName) {
@@ -83,6 +87,10 @@ function showStep(stepName) {
 
   if (stepName === 'result' && resultPhoto && resultPhoto.src) {
     resultPhoto.classList.remove('hidden');
+  }
+
+  if (stepName === 'share') {
+    initShareStep();
   }
 
   if (stepNav) {
@@ -760,8 +768,8 @@ if (btnChangeStyle) {
 if (btnShareResult) {
   onTap(btnShareResult, () => {
     if (btnShareResult.disabled) return;
-    if (latestShare?.shareUrl) {
-      window.open(latestShare.shareUrl, '_blank', 'noopener');
+    if (latestShare?.imageUrl) {
+      showStep('share');
     }
   });
 }
@@ -819,6 +827,29 @@ document.addEventListener('touchstart', handleUserActivity, { passive: true });
 document.addEventListener('touchmove', handleUserActivity, { passive: true });
 document.addEventListener('keydown', handleUserActivity, { passive: true });
 document.addEventListener('click', handleUserActivity, { passive: true });
+
+// Initialize share step functionality
+function initShareStep() {
+  if (!latestShare?.qrDataUrl || !latestShare?.shareUrl) {
+    if (shareQRCode) {
+      shareQRCode.alt = 'QR Code not available';
+      shareQRCode.style.display = 'none';
+    }
+    return;
+  }
+
+  // Display QR code that links to share.html
+  if (shareQRCode) {
+    shareQRCode.src = latestShare.qrDataUrl;
+    shareQRCode.style.display = 'block';
+  }
+}
+
+if (btnBackFromShare) {
+  onTap(btnBackFromShare, () => {
+    showStep('screensaver');
+  });
+}
 
 showStep(currentStep);
 updateResultButtons();
