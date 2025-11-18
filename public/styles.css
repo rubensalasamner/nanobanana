@@ -438,8 +438,12 @@ button.ghost {
 
 .camera-card .stage {
   max-width: min(90vw, 420px);
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 3 / 4; /* Default vertical orientation, will be overridden by JS with actual camera AR */
   border-radius: 32px;
+}
+
+.camera-card .stage.hidden {
+  display: none;
 }
 
 video,
@@ -488,6 +492,12 @@ img {
   object-fit: cover; /* fill container; may crop a bit */
   border-radius: 0; /* stage already has rounded corners */
   background: #000;
+}
+
+.camera-card .stage video,
+.camera-card .stage canvas,
+.camera-card .stage img {
+  object-fit: contain; /* Show full camera feed without cropping */
 }
 #countdown {
   position: absolute;

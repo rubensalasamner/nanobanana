@@ -163,10 +163,18 @@ async function startCamera() {
     // wait for dimensions
     await new Promise((res) => (video.onloadedmetadata = res));
 
-    const stage = document.querySelector('.stage');
+    const stage = document.querySelector('.camera-card .stage') || document.querySelector('.stage');
     const ar = video.videoWidth / video.videoHeight;
-    if (Number.isFinite(ar) && ar > 0) {
+    if (Number.isFinite(ar) && ar > 0 && stage) {
+      // Set aspect ratio to match actual camera dimensions
       stage.style.aspectRatio = `${video.videoWidth} / ${video.videoHeight}`;
+      stage.style.setProperty(
+        'aspect-ratio',
+        `${video.videoWidth} / ${video.videoHeight}`,
+        'important'
+      );
+      // Now show the stage with correct aspect ratio
+      stage.classList.remove('hidden');
     }
     // responsive media
     video.style.width = '100%';
@@ -420,8 +428,16 @@ if (btnShareResult) {
   });
 }
 if (btnPrintResult) {
-  onTap(btnPrintResult, () => {
-    if (btnPrintResult.disabled) return;
+  let isPrinting = false;
+  // Use a single click handler instead of onTap to avoid double-firing
+  // (onTap adds both pointerup and click handlers which can cause duplicate prints)
+  btnPrintResult.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (btnPrintResult.disabled || isPrinting) return;
+
+    // Prevent multiple print calls
+    isPrinting = true;
 
     // Show printing message and grey out button
     if (printingMessage) {
@@ -442,6 +458,7 @@ if (btnPrintResult) {
       btnPrintResult.disabled = false;
       btnPrintResult.style.opacity = '';
       btnPrintResult.style.cursor = '';
+      isPrinting = false;
     }, 2000);
   });
 }
