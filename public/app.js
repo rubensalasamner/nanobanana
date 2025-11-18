@@ -41,6 +41,9 @@ const stepFooter = document.querySelector('.step-footer');
 const styleTitle = document.querySelector('.style-title');
 
 let currentStep = 'screensaver';
+let idleTimer = null;
+const IDLE_TIMEOUT = 60000; // 1 minute in milliseconds
+
 const wizardSteps = {
   screensaver: stepScreensaver,
   welcome: stepWelcome,
@@ -81,6 +84,37 @@ function showStep(stepName) {
       stepFooter.classList.remove('hidden');
     }
   }
+
+  // Reset idle timer when navigating
+  resetIdleTimer();
+}
+
+// Idle timer functions
+function resetIdleTimer() {
+  // Clear existing timer
+  if (idleTimer) {
+    clearTimeout(idleTimer);
+    idleTimer = null;
+  }
+
+  // Don't start timer if we're on screensaver
+  if (currentStep === 'screensaver') {
+    return;
+  }
+
+  // Set new timer to go back to screensaver after 1 minute of inactivity
+  idleTimer = setTimeout(() => {
+    showStep('screensaver');
+    // Stop camera if running
+    if (stream) {
+      stream.getTracks().forEach((t) => t.stop());
+      stream = null;
+    }
+  }, IDLE_TIMEOUT);
+}
+
+function handleUserActivity() {
+  resetIdleTimer();
 }
 
 if (stepNav) {
@@ -473,6 +507,14 @@ document.addEventListener('keydown', (e) => {
     if (!btnSnap.disabled) takeSnapshot();
   }
 });
+
+// Set up idle timer - listen for user activity
+document.addEventListener('mousemove', handleUserActivity, { passive: true });
+document.addEventListener('mousedown', handleUserActivity, { passive: true });
+document.addEventListener('touchstart', handleUserActivity, { passive: true });
+document.addEventListener('touchmove', handleUserActivity, { passive: true });
+document.addEventListener('keydown', handleUserActivity, { passive: true });
+document.addEventListener('click', handleUserActivity, { passive: true });
 
 showStep(currentStep);
 updateResultButtons();
