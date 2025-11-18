@@ -43,6 +43,7 @@ const styleTitle = document.querySelector('.style-title');
 let currentStep = 'screensaver';
 let idleTimer = null;
 const IDLE_TIMEOUT = 60000; // 1 minute in milliseconds
+let isTakingSnapshot = false; // Prevent auto-taking pictures
 
 const wizardSteps = {
   screensaver: stepScreensaver,
@@ -182,6 +183,9 @@ async function runCountdown(n = 3) {
 // ----- Camera controls -----
 async function startCamera() {
   try {
+    // Reset snapshot flag when starting camera
+    isTakingSnapshot = false;
+
     if (stream) stream.getTracks().forEach((t) => t.stop());
     stream = await navigator.mediaDevices.getUserMedia({
       video: {
@@ -221,23 +225,48 @@ async function startCamera() {
     btnSnap.disabled = false;
     btnRetake.classList.add('hidden');
 
+    // Ensure snapshot flag is reset when camera is ready
+    isTakingSnapshot = false;
+
     // Hide Start button after camera is running
     btnStart.classList.add('hidden');
 
-    camStatus.textContent = 'Camera is running. Tap “Take picture”.';
+    camStatus.textContent = 'Camera is running. Tap "Take picture".';
   } catch (e) {
+    // Reset flag on error
+    isTakingSnapshot = false;
     camStatus.textContent = 'Camera error: ' + e.message;
   }
 }
 
 // Now async so we can await the countdown
 async function takeSnapshot() {
+  // Prevent auto-taking pictures - only allow explicit button clicks
+  if (isTakingSnapshot) {
+    return;
+  }
+
+  // Additional safeguard: ensure button is not disabled (user must click)
+  if (btnSnap && btnSnap.disabled) {
+    return;
+  }
+
+  // Ensure we're on the camera step
+  if (currentStep !== 'camera') {
+    isTakingSnapshot = false; // Reset flag if not on camera step
+    return;
+  }
+
   const vw = video.videoWidth,
     vh = video.videoHeight;
   if (!vw || !vh) {
     camStatus.textContent = 'Camera not ready yet…';
+    isTakingSnapshot = false; // Reset flag if camera not ready
     return;
   }
+
+  // Set flag to prevent multiple calls
+  isTakingSnapshot = true;
 
   // NEW: 3–2–1 overlay before capture
   await runCountdown(3);
@@ -280,6 +309,9 @@ async function takeSnapshot() {
   btnApply.disabled = !selectedPrompt;
   camStatus.textContent = 'Snapshot captured.';
 
+  // Reset flag after snapshot is complete
+  isTakingSnapshot = false;
+
   if (styleStepTimeout) {
     clearTimeout(styleStepTimeout);
   }
@@ -290,6 +322,9 @@ async function takeSnapshot() {
 }
 
 function retake() {
+  // Reset snapshot flag when retaking
+  isTakingSnapshot = false;
+
   photo.classList.add('hidden');
   video.classList.remove('hidden');
   btnApply.disabled = true;

@@ -205,19 +205,34 @@ body {
   aspect-ratio: 1 / 1;
   border-radius: 32px;
   background: transparent;
-  display: grid;
-  place-items: center;
+  display: block;
   overflow: hidden;
   position: relative;
   margin-bottom: 56px;
 }
 
-.result-stage img {
+.result-stage img:not(.ai-overlay) {
   width: 100%;
   height: 100%;
   object-fit: cover;
   border-radius: 32px !important;
   background: transparent;
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+}
+
+#resultPhoto {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 32px !important;
+  background: transparent;
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
 }
 
 .result-stage .ai-overlay {
@@ -233,6 +248,9 @@ body {
   opacity: 0.9;
   object-fit: contain;
   margin: 0;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 
 .result-actions {
