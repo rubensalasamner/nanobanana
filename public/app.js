@@ -67,6 +67,13 @@ function showStep(stepName) {
     }
   }
 
+  if (stepName === 'style') {
+    // Ensure title shows "Choose your style" when navigating to style step
+    if (styleTitle) {
+      styleTitle.textContent = 'Choose your style';
+    }
+  }
+
   if (stepName === 'result' && resultPhoto && resultPhoto.src) {
     resultPhoto.classList.remove('hidden');
   }
@@ -357,6 +364,10 @@ function restartFlow() {
 function handlePresetTap(e) {
   const btn = e.target.closest('[data-prompt]');
   if (!btn) return;
+
+  // Don't allow clicking if already applying or if button is disabled
+  if (isApplying || btn.disabled) return;
+
   for (const el of grid.querySelectorAll('[data-prompt]')) el.style.outline = '';
   btn.style.outline = '3px solid var(--accent)';
   selectedPrompt = btn.dataset.prompt;
@@ -384,7 +395,14 @@ async function callImageEditAndShareAPI(imageBlob, prompt) {
   form.append('image', imageBlob, 'photo.jpg');
   form.append('prompt', prompt);
   const res = await fetch('/api/edit-and-share', { method: 'POST', body: form });
-  if (!res.ok) throw new Error('API ' + res.status);
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    const error = new Error(errorData.error || `API error ${res.status}: ${res.statusText}`);
+    error.status = res.status; // Attach status code to error for handling
+    error.statusCode = res.status; // Also add statusCode as backup
+    console.log('API error:', res.status, errorData);
+    throw error;
+  }
   return await res.json();
 }
 
@@ -397,9 +415,21 @@ async function applyPreset() {
   if (isApplying) return;
   isApplying = true;
 
-  // Update title to show generating status
+  // Update title to show generating status (static)
   if (styleTitle) {
     styleTitle.textContent = 'Generating Image...';
+  }
+
+  // Find and update the clicked style card button with spinner
+  // Store original text in a data attribute before replacing
+  const clickedCard = grid?.querySelector(`[data-prompt="${CSS.escape(selectedPrompt)}"]`);
+  if (clickedCard) {
+    // Store original text if not already stored
+    if (!clickedCard.dataset.originalText) {
+      clickedCard.dataset.originalText = clickedCard.textContent.trim();
+    }
+    clickedCard.innerHTML = '<span class="style-card-spinner"></span>';
+    clickedCard.disabled = true;
   }
 
   // NEW: spinner on button
@@ -447,14 +477,78 @@ async function applyPreset() {
       }
     };
 
+    // Restore clicked style card button
+    const clickedCard = grid?.querySelector(`[data-prompt="${CSS.escape(selectedPrompt)}"]`);
+    if (clickedCard && clickedCard.dataset.originalText) {
+      clickedCard.innerHTML = clickedCard.dataset.originalText;
+      clickedCard.disabled = false;
+      delete clickedCard.dataset.originalText;
+    }
+
     apiStatus.textContent = 'Done. Scan the QR to open your photo.';
     showStep('result');
     updateResultButtons();
   } catch (err) {
+    console.log(
+      'Error caught in applyPreset:',
+      err,
+      'status:',
+      err.status,
+      'statusCode:',
+      err.statusCode
+    );
+
+    // If 422 error, redirect to welcome page
+    // Check multiple ways the status might be stored
+    const status =
+      err.status || err.statusCode || (err.message && err.message.match(/422/) ? 422 : null);
+    if (status === 422) {
+      // Reset state
+      isApplying = false;
+      const tempPrompt = selectedPrompt;
+      latestBlob = null;
+      latestShare = null;
+      selectedPrompt = null;
+
+      // Restore title
+      if (styleTitle) {
+        styleTitle.textContent = 'Choose your style';
+      }
+
+      // Restore clicked style card button
+      if (tempPrompt) {
+        const clickedCard = grid?.querySelector(`[data-prompt="${CSS.escape(tempPrompt)}"]`);
+        if (clickedCard && clickedCard.dataset.originalText) {
+          clickedCard.innerHTML = clickedCard.dataset.originalText;
+          clickedCard.disabled = false;
+          delete clickedCard.dataset.originalText;
+        }
+      }
+
+      // Stop spinner and reset button
+      applySpinner.classList.add('hidden');
+      applyText.textContent = 'Apply preset';
+      btnApply.disabled = false;
+
+      // Navigate to welcome page
+      showStep('welcome');
+      return;
+    }
+
     apiStatus.textContent = 'Failed: ' + err.message + ' (check server logs)';
     // Restore title on error
     if (styleTitle) {
       styleTitle.textContent = 'Choose your style';
+    }
+
+    // Restore clicked style card button on error
+    if (selectedPrompt) {
+      const clickedCard = grid?.querySelector(`[data-prompt="${CSS.escape(selectedPrompt)}"]`);
+      if (clickedCard && clickedCard.dataset.originalText) {
+        clickedCard.innerHTML = clickedCard.dataset.originalText;
+        clickedCard.disabled = false;
+        delete clickedCard.dataset.originalText;
+      }
     }
   } finally {
     // NEW: stop spinner
@@ -465,6 +559,18 @@ async function applyPreset() {
     // Restore title when done (if still on style step)
     if (styleTitle && currentStep === 'style') {
       styleTitle.textContent = 'Choose your style';
+    }
+
+    // Restore all style cards if still on style step (cleanup)
+    if (currentStep === 'style' && grid) {
+      const allCards = grid.querySelectorAll('.style-card');
+      allCards.forEach((card) => {
+        if (card.dataset.originalText && card.innerHTML.includes('spinner')) {
+          card.innerHTML = card.dataset.originalText;
+          card.disabled = false;
+          delete card.dataset.originalText;
+        }
+      });
     }
   }
 }

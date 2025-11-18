@@ -5,6 +5,8 @@ import QRCode from 'qrcode';
 import { nanoid } from 'nanoid';
 import { put as blobPut, list as blobList, del as blobDel } from '@vercel/blob';
 import sharp from 'sharp';
+import { readFile } from 'fs/promises';
+import { join } from 'path';
 
 export const config = {
   runtime: 'nodejs',
@@ -102,6 +104,23 @@ function getOrigin(req) {
   return `${proto}://${host}`;
 }
 
+/**
+ * Load the black 4x6 aspect ratio template image (blackbg.png)
+ */
+async function load4x6BlackImage() {
+  try {
+    // Path relative to project root: public/assets/images/blackbg.png
+    // In Vercel, process.cwd() points to the project root
+    const imagePath = join(process.cwd(), 'public', 'assets', 'images', 'blackbg.png');
+    const imageBuffer = await readFile(imagePath);
+    return imageBuffer;
+  } catch (err) {
+    // Fallback: if file not found, log error and return null
+    console.error('Failed to load blackbg.png:', err);
+    throw new Error('Failed to load template image');
+  }
+}
+
 /** ===== Route handlers ===== */
 async function handleHealthz(_req, res) {
   res.status(200).json({ ok: true });
@@ -116,16 +135,46 @@ async function handleDiag(_req, res) {
   });
 }
 
-async function runGeminiEdit(fileMime, fileBuf, prompt) {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  const resp = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-image',
-    contents: [
-      { text: prompt },
-      { inlineData: { mimeType: fileMime || 'image/jpeg', data: fileBuf.toString('base64') } },
-    ],
-  });
-  return extractFirstImage(resp);
+async function runGeminiEdit(fileMime, fileBuf, prompt, reqId, templateImageBuf = null) {
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+    // Build contents array with prompt and images
+    const contents = [{ text: prompt }];
+
+    // Add user's image as image 1
+    contents.push({
+      inlineData: { mimeType: fileMime || 'image/jpeg', data: fileBuf.toString('base64') },
+    });
+
+    // Add template image (4x6 black) as image 2 if provided
+    if (templateImageBuf) {
+      contents.push({
+        inlineData: { mimeType: 'image/png', data: templateImageBuf.toString('base64') },
+      });
+    }
+
+    const resp = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents,
+    });
+    const result = extractFirstImage(resp);
+    if (!result && resp) {
+      // Log the response to see what we got instead of an image
+      log(reqId, 'warn', 'gemini.noImage', {
+        prompt: prompt.substring(0, 100),
+        candidates: resp?.candidates?.length || 0,
+        response: JSON.stringify(resp).substring(0, 500),
+      });
+    }
+    return result;
+  } catch (err) {
+    log(reqId, 'error', 'gemini.error', {
+      message: err?.message,
+      prompt: prompt.substring(0, 100),
+    });
+    throw err;
+  }
 }
 
 async function handleEdit(req, res, reqId) {
@@ -140,9 +189,15 @@ async function handleEdit(req, res, reqId) {
     model: 'gemini-2.5-flash-image',
     mime: fileMime,
     size: fileSize,
+    promptLength: prompt.length,
   });
-  const outImg = await runGeminiEdit(fileMime, fileBuf, prompt);
-  if (!outImg) return res.status(422).json({ error: 'Model returned no image' });
+  const outImg = await runGeminiEdit(fileMime, fileBuf, prompt, reqId);
+  if (!outImg) {
+    log(reqId, 'error', 'gemini.noImage', { prompt: prompt.substring(0, 100) });
+    return res.status(422).json({
+      error: 'Model returned no image. The prompt may not be suitable for image generation.',
+    });
+  }
 
   log(reqId, 'log', 'gemini.ok', { outMime: outImg.mime, outBytes: outImg.buf.length });
   res.setHeader('Content-Type', outImg.mime.startsWith('image/') ? outImg.mime : 'image/png');
@@ -154,16 +209,29 @@ async function handleEditAndShare(req, res, reqId) {
   if (!fileBuf) return res.status(400).json({ error: "No image uploaded (field 'image')" });
   if (fileSize > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Image too large' });
 
-  const prompt = String(fields.prompt ?? '');
-  if (!prompt) return res.status(400).json({ error: 'Missing prompt' });
+  const originalPrompt = String(fields.prompt ?? '');
+  if (!originalPrompt) return res.status(400).json({ error: 'Missing prompt' });
+
+  // Load 4x6 black template image
+  const templateImageBuf = await load4x6BlackImage();
+
+  // Combine original prompt with aspect ratio instruction
+  const prompt = `${originalPrompt}\n\nRedraw the content from image 1 onto image 2, and adjust image 1 by adding content so that its aspect ratio matches image 2. At the same time, completely remove the content of image 2, keeping only its aspect ratio. Make sure no blank areas are left.`;
 
   log(reqId, 'log', 'gemini.request', {
     model: 'gemini-2.5-flash-image',
     mime: fileMime,
     size: fileSize,
+    promptLength: prompt.length,
+    hasTemplate: true,
   });
-  const outImg = await runGeminiEdit(fileMime, fileBuf, prompt);
-  if (!outImg) return res.status(422).json({ error: 'Model returned no image' });
+  const outImg = await runGeminiEdit(fileMime, fileBuf, prompt, reqId, templateImageBuf);
+  if (!outImg) {
+    log(reqId, 'error', 'gemini.noImage', { prompt: prompt.substring(0, 100) });
+    return res.status(422).json({
+      error: 'Model returned no image. The prompt may not be suitable for image generation.',
+    });
+  }
   log(reqId, 'log', 'gemini.ok', { outMime: outImg.mime, outBytes: outImg.buf.length });
 
   const id = nanoid(10);

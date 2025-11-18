@@ -194,10 +194,27 @@ body {
   align-items: center;
   justify-content: center;
   box-shadow: 0 10px 20px rgba(55, 125, 255, 0.3);
+  cursor: pointer;
+  transition: transform 0.1s;
 }
 
-.style-card:active {
+.style-card:active:not(:disabled) {
   transform: scale(0.98);
+}
+
+.style-card:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.style-card-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  display: inline-block;
+  animation: spin 0.8s linear infinite;
 }
 
 .result-stage {
