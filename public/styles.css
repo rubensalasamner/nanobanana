@@ -163,6 +163,21 @@ body {
   padding: 0;
 }
 
+.style-preview {
+  width: min(300px, 60vw);
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 2 / 3; /* 4x6 portrait */
+  object-fit: contain;
+  border-radius: 16px;
+  margin: 0 auto 32px;
+  display: block;
+}
+
+.style-preview.hidden {
+  display: none;
+}
+
 .style-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(160px, 1fr));

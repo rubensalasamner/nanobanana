@@ -114,13 +114,44 @@ app.get('/diag', (_req, res) => {
 // --- Gemini client ---
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-async function runGeminiEdit(fileMime, fileBuf, prompt) {
+/**
+ * Load the black 4x6 aspect ratio template image (blackbg.png)
+ */
+async function load4x6BlackImage() {
+  try {
+    const imagePath = path.join(PUBLIC_DIR, 'assets', 'images', 'blackbg.png');
+    const imageBuffer = await fsp.readFile(imagePath);
+    return imageBuffer;
+  } catch (err) {
+    console.error('Failed to load blackbg.png:', err);
+    throw new Error('Failed to load template image');
+  }
+}
+
+async function runGeminiEdit(fileMime, fileBuf, prompt, templateImageBuf = null) {
+  // Build contents array with prompt and images
+  const contents = [{ text: prompt }];
+
+  // Add user's image as image 1
+  contents.push({
+    inlineData: { mimeType: fileMime || 'image/jpeg', data: fileBuf.toString('base64') },
+  });
+
+  // Add template image (4x6 black) as image 2 if provided
+  if (templateImageBuf) {
+    contents.push({
+      inlineData: { mimeType: 'image/png', data: templateImageBuf.toString('base64') },
+    });
+  }
+
   const resp = await ai.models.generateContent({
     model: 'gemini-2.5-flash-image',
-    contents: [
-      { text: prompt },
-      { inlineData: { mimeType: fileMime || 'image/jpeg', data: fileBuf.toString('base64') } },
-    ],
+    contents,
+    config: {
+      imageConfig: {
+        aspectRatio: '2:3', // 4x6 portrait (4:6 = 2:3) - standing/vertical
+      },
+    },
   });
   return extractImagePart(resp);
 }
@@ -181,15 +212,21 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
     }
     if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
 
-    const prompt = String(req.body.prompt ?? '');
-    if (!prompt) return res.status(400).json({ error: 'Missing prompt' });
+    const originalPrompt = String(req.body.prompt ?? '');
+    if (!originalPrompt) return res.status(400).json({ error: 'Missing prompt' });
 
     const fileSize = req.file.buffer.length;
     if (fileSize > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Image too large' });
 
-    console.log(`Editing (and sharing) image with prompt: "${prompt}"`);
+    // Load 4x6 black template image
+    const templateImageBuf = await load4x6BlackImage();
 
-    const img = await runGeminiEdit(req.file.mimetype, req.file.buffer, prompt);
+    // Combine original prompt with aspect ratio instruction
+    const prompt = `${originalPrompt}\n\nRedraw the content from image 1 onto image 2, and adjust image 1 by adding content so that its aspect ratio matches image 2. At the same time, completely remove the content of image 2, keeping only its aspect ratio. Make sure no blank areas are left.`;
+
+    console.log(`Editing (and sharing) image with prompt: "${originalPrompt}"`);
+
+    const img = await runGeminiEdit(req.file.mimetype, req.file.buffer, prompt, templateImageBuf);
     if (!img) {
       console.warn('No image returned by Gemini');
       return res.status(422).json({ error: 'Model returned no image' });

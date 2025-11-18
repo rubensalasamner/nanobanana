@@ -157,6 +157,11 @@ async function runGeminiEdit(fileMime, fileBuf, prompt, reqId, templateImageBuf 
     const resp = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents,
+      config: {
+        imageConfig: {
+          aspectRatio: '2:3', // 4x6 portrait (4:6 = 2:3) - standing/vertical
+        },
+      },
     });
     const result = extractFirstImage(resp);
     if (!result && resp) {

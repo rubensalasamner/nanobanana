@@ -39,10 +39,11 @@ const btnRestart = document.getElementById('btnRestart');
 const printingMessage = document.getElementById('printingMessage');
 const stepFooter = document.querySelector('.step-footer');
 const styleTitle = document.querySelector('.style-title');
+const stylePreview = document.getElementById('stylePreview');
 
 let currentStep = 'screensaver';
 let idleTimer = null;
-const IDLE_TIMEOUT = 60000; // 1 minute in milliseconds
+const IDLE_TIMEOUT = 600000; // 10 minutes in milliseconds
 let isTakingSnapshot = false; // Prevent auto-taking pictures
 
 const wizardSteps = {
@@ -71,6 +72,10 @@ function showStep(stepName) {
     // Ensure title shows "Choose your style" when navigating to style step
     if (styleTitle) {
       styleTitle.textContent = 'Choose your style';
+    }
+    // Show cropped image preview if available
+    if (stylePreview && stylePreview.src) {
+      stylePreview.classList.remove('hidden');
     }
   }
 
@@ -145,6 +150,46 @@ let styleStepTimeout = null;
 setInterval(() => fetch('/api/cleanup').catch(() => {}), 60 * 60 * 1000);
 
 // ----- Helpers -----
+/**
+ * Crop image to target aspect ratio (2:3 for 4x6 portrait)
+ * @param {HTMLImageElement | HTMLVideoElement} image - Source image or video element
+ * @param {number} targetW - Target width
+ * @param {number} targetH - Target height
+ * @returns {string} - Base64 data URL of cropped image
+ */
+function cropToAspectRatio(image, targetW, targetH) {
+  const inputW = image.videoWidth || image.width;
+  const inputH = image.videoHeight || image.height;
+  const inputRatio = inputW / inputH;
+  const targetRatio = targetW / targetH;
+
+  // Determine cropping box
+  let cropW, cropH, cropX, cropY;
+
+  if (inputRatio > targetRatio) {
+    // Input is wider → crop horizontally
+    cropH = inputH;
+    cropW = inputH * targetRatio;
+    cropX = (inputW - cropW) / 2;
+    cropY = 0;
+  } else {
+    // Input is taller → crop vertically
+    cropW = inputW;
+    cropH = inputW / targetRatio;
+    cropX = 0;
+    cropY = (inputH - cropH) / 2;
+  }
+
+  // Draw into canvas
+  const canvas = document.createElement('canvas');
+  canvas.width = targetW;
+  canvas.height = targetH;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(image, cropX, cropY, cropW, cropH, 0, 0, targetW, targetH);
+
+  return canvas.toDataURL('image/jpeg', 0.9); // base64 for sending to Gemini
+}
+
 function onTap(el, handler) {
   let armed = false;
   el.addEventListener('pointerdown', () => (armed = true), { passive: true });
@@ -289,26 +334,43 @@ async function takeSnapshot() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.drawImage(video, 0, 0, vw, vh);
 
-  // Downscale for upload
+  // Crop to 4x6 portrait (2:3 aspect ratio) before downscaling
+  // Use a reasonable size for cropping, then downscale for upload
+  const cropTargetW = 1200; // Target width for 2:3 ratio
+  const cropTargetH = 1800; // Target height for 2:3 ratio (1200 * 3/2 = 1800)
+  const croppedDataUrl = cropToAspectRatio(video, cropTargetW, cropTargetH);
+
+  // Downscale cropped image for upload
   const MAX = 1600; // long edge
-  const scale = Math.min(1, MAX / Math.max(vw, vh));
-  const upW = Math.round(vw * scale);
-  const upH = Math.round(vh * scale);
+  const scale = Math.min(1, MAX / cropTargetH); // cropTargetH is the longer edge
+  const upW = Math.round(cropTargetW * scale);
+  const upH = Math.round(cropTargetH * scale);
 
-  const tmp = document.createElement('canvas');
-  tmp.width = upW;
-  tmp.height = upH;
-  tmp.getContext('2d').drawImage(video, 0, 0, upW, upH);
-  tmp.toBlob(
-    (b) => {
-      latestBlob = b;
-    },
-    'image/jpeg',
-    0.85
-  );
+  // Convert cropped data URL to blob for upload
+  const croppedImg = new Image();
+  croppedImg.onload = () => {
+    const tmp = document.createElement('canvas');
+    tmp.width = upW;
+    tmp.height = upH;
+    const tmpCtx = tmp.getContext('2d');
+    tmpCtx.drawImage(croppedImg, 0, 0, upW, upH);
+    tmp.toBlob(
+      (b) => {
+        latestBlob = b;
+      },
+      'image/jpeg',
+      0.85
+    );
+  };
+  croppedImg.src = croppedDataUrl;
 
-  // Preview in UI
-  photo.src = canvas.toDataURL('image/jpeg', 0.9);
+  // Preview in UI - show cropped version
+  photo.src = croppedDataUrl;
+
+  // Store cropped image for style step preview
+  if (stylePreview) {
+    stylePreview.src = croppedDataUrl;
+  }
   video.classList.add('hidden');
   canvas.classList.add('hidden');
   photo.classList.remove('hidden');
@@ -340,6 +402,11 @@ function retake() {
   camStatus.textContent = 'Ready to retake.';
   latestBlob = null;
   latestShare = null;
+  // Hide style preview when retaking
+  if (stylePreview) {
+    stylePreview.classList.add('hidden');
+    stylePreview.removeAttribute('src');
+  }
   if (styleStepTimeout) {
     clearTimeout(styleStepTimeout);
     styleStepTimeout = null;
