@@ -159,7 +159,7 @@ async function runGeminiEdit(fileMime, fileBuf, prompt, reqId, templateImageBuf 
       contents,
       config: {
         imageConfig: {
-          aspectRatio: '2:3', // 4x6 portrait (4:6 = 2:3) - standing/vertical
+          aspectRatio: '1:1', // 4x6 portrait (4:6 = 2:3) - standing/vertical
         },
       },
     });
