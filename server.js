@@ -218,8 +218,8 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
     const fileSize = req.file.buffer.length;
     if (fileSize > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Image too large' });
 
-    // Combine original prompt with aspect ratio instruction
-    const prompt = `${originalPrompt}\n\nRedraw the content from image 1 in a 1:1 square aspect ratio. Adjust image 1 by adding content as needed to fill a perfect square (1:1) format. Make sure no blank areas are left.`;
+    // Combine original prompt with aspect ratio instruction and quality request
+    const prompt = `${originalPrompt}\n\nRedraw the content from image 1 in a 1:1 square aspect ratio. Adjust image 1 by adding content as needed to fill a perfect square (1:1) format. Make sure no blank areas are left. Generate a high-quality, detailed, sharp focus image suitable for 300dpi printing.`;
 
     console.log(`Editing (and sharing) image with prompt: "${originalPrompt}"`);
 
@@ -242,15 +242,23 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
       console.log('Returning data URL image (UPLOAD_TARGET=dataurl)');
     } else {
       // Convert to high-quality WebP for 300dpi printing
-      // Using 1200x1200 (1:1) for square format - good for 300dpi printing (4in x 4in at 300dpi = 1200px)
+      // Using 2400x2400 (1:1) for square format - excellent for 300dpi printing (8in x 8in at 300dpi = 2400px)
+      // First get metadata to verify input size
+      const metadata = await sharp(outBuffer).metadata();
+      console.log(`Resizing image from ${metadata.width}x${metadata.height} to 2400x2400`);
+
       const webpBuffer = await sharp(outBuffer)
         .rotate()
-        .resize(1200, 1200, {
-          fit: 'fill', // Force exact 1200x1200 dimensions (no cropping, upscales if needed)
+        .resize(2400, 2400, {
+          fit: 'fill', // Force exact 2400x2400 dimensions (no cropping, upscales if needed)
           withoutEnlargement: false, // Allow upscaling if needed
         })
         .toFormat('webp', { quality: 95 }) // High quality for printing
         .toBuffer();
+
+      // Verify output size
+      const outputMetadata = await sharp(webpBuffer).metadata();
+      console.log(`Resized image to ${outputMetadata.width}x${outputMetadata.height}`);
       outBuffer = webpBuffer;
       outMime = 'image/webp';
       const filename = `${id}.webp`;
