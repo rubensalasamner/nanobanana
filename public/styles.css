@@ -119,7 +119,7 @@ body {
 
 .camera-simple-headline {
   text-align: center;
-  margin: 0 0 32px 0;
+  margin: 0 0 40px 0;
 }
 
 .style-container,
@@ -135,19 +135,19 @@ body {
 }
 
 .result-container .camera-brand {
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .camera-title,
 .style-title {
-  margin: 0 0 4px 0;
+  margin: 0 0 32px 0;
   font-size: clamp(36px, 5vw, 48px);
   color: #000;
   font-weight: 400;
 }
 
 .result-title {
-  margin: 0 0 32px 0;
+  margin: 0 0 40px 0;
   font-size: clamp(36px, 5vw, 48px);
   color: #000;
   font-weight: 400;
@@ -166,7 +166,7 @@ body {
 .style-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(160px, 1fr));
-  gap: 16px;
+  gap: 20px;
   width: min(520px, 90vw);
   justify-items: center;
 }
@@ -209,7 +209,7 @@ body {
   place-items: center;
   overflow: hidden;
   position: relative;
-  margin-bottom: 48px;
+  margin-bottom: 56px;
 }
 
 .result-stage img {
@@ -238,18 +238,18 @@ body {
 .result-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 20px;
   justify-content: center;
-  margin-bottom: 40px;
+  margin-bottom: 48px;
 }
 
 .printing-message {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  margin-top: 24px;
-  margin-bottom: 24px;
+  gap: 20px;
+  margin-top: 32px;
+  margin-bottom: 32px;
 }
 
 .printing-message.hidden {
@@ -398,10 +398,10 @@ button.ghost {
 
 .camera-actions {
   width: 100%;
-  margin-top: 24px;
+  margin-top: 32px;
   display: flex;
   justify-content: center;
-  gap: 12px;
+  gap: 16px;
 }
 
 .camera-actions #btnSnap {
@@ -571,7 +571,7 @@ img {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
+  gap: 24px;
   position: relative;
 }
 
