@@ -711,37 +711,47 @@ if (btnChangeStyle) {
     // Clear all style card outlines and restore cards
     if (grid) {
       grid.querySelectorAll('[data-prompt]').forEach((el) => {
-        // Always clear outline
+        // Always clear outline - remove inline style completely
+        el.style.removeProperty('outline');
         el.style.outline = '';
+        el.style.outlineWidth = '';
+        el.style.outlineColor = '';
+        el.style.outlineStyle = '';
         // Always re-enable cards
         el.disabled = false;
 
         // Check if card has a spinner (either as element or in innerHTML)
         const hasSpinnerElement = el.querySelector('.style-card-spinner') !== null;
         const hasSpinnerInHTML = el.innerHTML.includes('style-card-spinner') || el.innerHTML.includes('spinner');
+        const innerHTMLTrimmed = el.innerHTML.trim();
+        const isOnlySpinner = hasSpinnerElement || hasSpinnerInHTML || 
+          (innerHTMLTrimmed === '<span class="style-card-spinner"></span>') ||
+          (innerHTMLTrimmed.startsWith('<span') && innerHTMLTrimmed.includes('spinner'));
 
-        // Always restore card text if it has a spinner or if originalText is stored
+        // ALWAYS restore card text if it has originalText stored OR if it has a spinner
         // Priority: use originalText if available, otherwise detect spinner and restore
         if (el.dataset.originalText) {
           // If we have stored originalText, always use it to restore
           el.innerHTML = el.dataset.originalText;
           // Keep originalText stored for future use, don't delete it
-        } else if (hasSpinnerElement || hasSpinnerInHTML) {
+        } else if (isOnlySpinner) {
           // Card has spinner but no stored originalText - restore from prompt
           const prompt = el.dataset.prompt || '';
-          if (prompt.includes('figurine')) el.innerHTML = '3D figurine';
-          else if (prompt.includes('yearbook')) el.innerHTML = "1980's yearbook";
+          let restoredText = 'Style'; // default
+          if (prompt.includes('figurine')) restoredText = '3D figurine';
+          else if (prompt.includes('yearbook')) restoredText = "1980's yearbook";
           else if (prompt.includes('Polaroid') || prompt.includes('instant-camera'))
-            el.innerHTML = 'Polaroid';
+            restoredText = 'Polaroid';
           else if (prompt.includes('Hairstyle') || prompt.includes('hair'))
-            el.innerHTML = 'Hairstyle change';
+            restoredText = 'Hairstyle change';
           else if (prompt.includes('headshot') || prompt.includes('LinkedIn'))
-            el.innerHTML = 'Professional headshot';
+            restoredText = 'Professional headshot';
           else if (prompt.includes('painting') || prompt.includes('Impressionist'))
-            el.innerHTML = 'Photo to painting';
-          else el.innerHTML = 'Style';
+            restoredText = 'Photo to painting';
+          
+          el.innerHTML = restoredText;
           // Store this as originalText for future use
-          el.dataset.originalText = el.innerHTML;
+          el.dataset.originalText = restoredText;
         }
       });
     }
