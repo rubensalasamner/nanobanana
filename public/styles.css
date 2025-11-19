@@ -316,9 +316,10 @@ body {
     display: block !important;
     position: absolute !important;
     bottom: 40px !important;
-    right: 40px !important;
+    left: 50% !important;
+    right: auto !important;
     top: auto !important;
-    left: auto !important;
+    transform: translateX(-50%) !important;
     width: 900px !important;
     height: auto !important;
     max-width: 900px !important;
@@ -332,7 +333,6 @@ body {
     background: transparent !important;
     border: none !important;
     box-shadow: none !important;
-    transform: none !important;
     clip-path: none !important;
     overflow: visible !important;
   }
