@@ -14,7 +14,7 @@
     <style media="print">
       /* Print styles */
       @page {
-        size: 4in 4in;
+        size: 4in 4.5in; /* Increased height to accommodate logo */
         margin: 0.2in;
       }
       body {
@@ -23,6 +23,7 @@
         margin: 0;
         padding: 0;
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
       }
@@ -57,8 +58,16 @@
         display: none !important;
       }
       #step-result {
-        display: block !important;
+        display: flex !important;
+        flex-direction: column;
+        align-items: center;
         position: static !important;
+      }
+      .result-container {
+        display: flex !important;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
       }
       .stage,
       .result-stage {
@@ -68,19 +77,33 @@
         max-width: 3.6in;
         max-height: 3.6in;
         aspect-ratio: 1 / 1; /* Square (1:1) ratio */
+      }
       .stage img,
       .result-stage img {
         width: 100%;
         height: 100%;
-        object-fit: contain;
+        object-fit: fill; /* Stretch to fill entire square - takes up maximum space */
         border-radius: 0;
         background: #fff;
+      }
+      .print-logo {
+        display: block !important;
+        width: 0.8in;
+        height: auto;
+        margin-top: 0.15in;
+        opacity: 0.8;
       }
       video,
       canvas {
         display: none !important;
       }
       h2 {
+        display: none;
+      }
+    </style>
+    <style>
+      /* Hide logo on screen, show only when printing */
+      .print-logo {
         display: none;
       }
     </style>
@@ -182,6 +205,12 @@ Maintain accurate facial likeness and identity. No added text or signatures."
             class="ai-overlay"
           />
         </div>
+        <!-- Google logo for printing only -->
+        <img
+          src="./assets/images/google-logo.png"
+          alt="Google"
+          class="print-logo"
+        />
         <div class="result-actions">
           <button
             id="btnChangeStyle"
