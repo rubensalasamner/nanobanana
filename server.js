@@ -246,7 +246,7 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
       // First get metadata to verify input size
       const metadata = await sharp(outBuffer).metadata();
       console.log(`Resizing image from ${metadata.width}x${metadata.height} to 1800x1800`);
-      
+
       const webpBuffer = await sharp(outBuffer)
         .rotate()
         .resize(1800, 1800, {
@@ -255,7 +255,7 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
         })
         .toFormat('webp', { quality: 95 }) // High quality for printing
         .toBuffer();
-      
+
       // Verify output size
       const outputMetadata = await sharp(webpBuffer).metadata();
       console.log(`Resized image to ${outputMetadata.width}x${outputMetadata.height}`);

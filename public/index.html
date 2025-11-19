@@ -12,9 +12,9 @@
       href="./styles.css"
     />
     <style media="print">
-      /* Print styles */
+      /* Print styles - Responsive to paper size */
       @page {
-        size: 4in 4.5in; /* Increased height to accommodate logo */
+        size: auto; /* Let user's paper size selection take effect */
         margin: 0.2in;
       }
       body {
@@ -26,10 +26,11 @@
         flex-direction: column;
         align-items: center;
         justify-content: center;
+        min-height: 100vh; /* Use full page height */
       }
       .wrap {
         width: 100%;
-        max-width: 6in;
+        max-width: 100%;
         padding: 0;
       }
       .card {
@@ -62,21 +63,26 @@
         flex-direction: column;
         align-items: center;
         position: static !important;
+        width: 100%;
+        height: 100vh;
+        justify-content: center;
       }
       .result-container {
         display: flex !important;
         flex-direction: column;
         align-items: center;
         width: 100%;
+        height: 100%;
+        justify-content: center;
       }
       .stage,
       .result-stage {
-        /* For 4x4 square: 4in wide x 4in tall, with 0.2in margins = 3.6in x 3.6in available */
-        width: 3.6in;
-        height: 3.6in;
-        max-width: 3.6in;
-        max-height: 3.6in;
-        aspect-ratio: 1 / 1; /* Square (1:1) ratio */
+        /* Responsive sizing - adapts to paper size */
+        width: 85%; /* Use 85% of available width */
+        height: 85%; /* Use 85% of available height */
+        max-width: 85%;
+        max-height: 85%;
+        aspect-ratio: 1 / 1; /* Maintain square (1:1) ratio */
       }
       .stage img,
       .result-stage img {
@@ -88,9 +94,10 @@
       }
       .print-logo {
         display: block !important;
-        width: 0.8in;
+        width: 15%; /* 3x larger than before (was 5%) */
+        max-width: 2.4in; /* 3x larger than before (was 0.8in) */
         height: auto;
-        margin-top: 0.15in;
+        margin-top: 1%; /* Responsive spacing */
         opacity: 0.8;
       }
       video,
@@ -207,7 +214,7 @@ Maintain accurate facial likeness and identity. No added text or signatures."
         </div>
         <!-- Google logo for printing only -->
         <img
-          src="./assets/images/google-logo.png"
+          src="./assets/google-logo.webp"
           alt="Google"
           class="print-logo"
         />
