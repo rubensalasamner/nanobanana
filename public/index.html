@@ -87,7 +87,7 @@
         position: relative !important;
       }
       .stage img,
-      .result-stage img {
+      .result-stage img:not(.google-logo-overlay) {
         width: 100%;
         height: 100%;
         object-fit: fill; /* Stretch to fill entire square - takes up maximum space */
@@ -208,10 +208,11 @@ Maintain accurate facial likeness and identity. No added text or signatures."
             alt="Your Nano Banana image"
             class="hidden"
           />
+          <!-- Google logo overlay - only visible in print -->
           <img
-            src="./assets/images/ai-symbol.svg"
-            alt="AI"
-            class="ai-overlay"
+            src="./assets/google-logo.png"
+            alt="Google"
+            class="google-logo-overlay"
           />
         </div>
         <div class="result-actions">
