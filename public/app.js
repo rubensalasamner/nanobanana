@@ -48,7 +48,7 @@ const btnBackFromShare = document.getElementById('btnBackFromShare');
 
 let currentStep = 'screensaver';
 let idleTimer = null;
-const IDLE_TIMEOUT = 600000; // 10 minutes in milliseconds
+const IDLE_TIMEOUT = 120000; // 2 minutes in milliseconds
 let isTakingSnapshot = false; // Prevent auto-taking pictures
 let styleStepClickBlocked = false; // Block clicks on style step immediately after navigation
 

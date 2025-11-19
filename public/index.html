@@ -15,7 +15,7 @@
       /* Print styles - Responsive to paper size */
       @page {
         size: auto; /* Let user's paper size selection take effect */
-        margin: 0.2in;
+        margin: 0.3in 0.2in 0.4in 0.2in; /* top right bottom left - extra bottom margin for logo */
       }
       body {
         background: #fff;
@@ -78,11 +78,13 @@
       .stage,
       .result-stage {
         /* Responsive sizing - adapts to paper size */
-        width: 85%; /* Use 85% of available width */
-        height: 85%; /* Use 85% of available height */
-        max-width: 85%;
-        max-height: 85%;
+        width: 80%; /* Use 80% of available width - reduced to leave room for logo */
+        height: 80%; /* Use 80% of available height - reduced to leave room for logo */
+        max-width: 80%;
+        max-height: 80%;
         aspect-ratio: 1 / 1; /* Maintain square (1:1) ratio */
+        overflow: visible !important; /* Allow logo to extend beyond container */
+        position: relative !important;
       }
       .stage img,
       .result-stage img {
@@ -211,13 +213,13 @@ Maintain accurate facial likeness and identity. No added text or signatures."
             alt="AI"
             class="ai-overlay"
           />
+          <!-- Google logo overlay at bottom right -->
+          <img
+            src="./assets/google-logo.png"
+            alt="Google"
+            class="google-logo-overlay"
+          />
         </div>
-        <!-- Google logo for printing only -->
-        <img
-          src="./assets/google-logo.jpg"
-          alt="Google"
-          class="print-logo"
-        />
         <div class="result-actions">
           <button
             id="btnChangeStyle"
