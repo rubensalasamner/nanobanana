@@ -321,9 +321,17 @@ body {
 .result-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 20px;
+  gap: 24px;
   justify-content: center;
   margin-bottom: 48px;
+}
+
+.result-actions .pill-btn {
+  margin: 12px;
+}
+
+.result-container #btnRestart {
+  margin-top: 24px;
 }
 
 .printing-message {
