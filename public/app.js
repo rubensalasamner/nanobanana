@@ -412,15 +412,15 @@ async function takeSnapshot() {
   canvas.classList.add('hidden');
   photo.classList.remove('hidden');
 
-  // Crop to 3:2 landscape aspect ratio for API in the background
+  // Crop to 1:1 square aspect ratio for API in the background
   // Use a reasonable size for cropping, then downscale for upload
-  const cropTargetW = 1800; // Target width for 3:2 ratio
-  const cropTargetH = 1200; // Target height for 3:2 ratio
+  const cropTargetW = 1800; // Target width for 1:1 ratio
+  const cropTargetH = 1800; // Target height for 1:1 ratio
   const croppedDataUrl = cropToAspectRatio(video, cropTargetW, cropTargetH);
 
   // Downscale cropped image for upload
   const MAX = 1600; // long edge
-  const scale = Math.min(1, MAX / cropTargetW); // cropTargetW is the longer edge for 3:2
+  const scale = Math.min(1, MAX / cropTargetW); // cropTargetW is the longer edge for 1:1
   const upW = Math.round(cropTargetW * scale);
   const upH = Math.round(cropTargetH * scale);
 

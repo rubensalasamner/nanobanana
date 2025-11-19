@@ -149,7 +149,7 @@ async function runGeminiEdit(fileMime, fileBuf, prompt, templateImageBuf = null)
     contents,
     config: {
       imageConfig: {
-        aspectRatio: '3:2', // 3:2 landscape ratio (1800x1200)
+        aspectRatio: '1:1', // Square (1:1) ratio
       },
     },
   });
@@ -219,7 +219,7 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
     if (fileSize > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Image too large' });
 
     // Combine original prompt with aspect ratio instruction and quality request
-    const prompt = `${originalPrompt}\n\nRedraw the content from image 1 in a 3:2 landscape aspect ratio. Adjust image 1 by adding content as needed to fill a perfect 3:2 format. Make sure no blank areas are left. Generate a high-quality, detailed, sharp focus image suitable for 300dpi printing.`;
+    const prompt = `${originalPrompt}\n\nRedraw the content from image 1 in a 1:1 square aspect ratio. Adjust image 1 by adding content as needed to fill a perfect square (1:1) format. Make sure no blank areas are left. Generate a high-quality, detailed, sharp focus image suitable for 300dpi printing.`;
 
     console.log(`Editing (and sharing) image with prompt: "${originalPrompt}"`);
 
@@ -242,20 +242,20 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
       console.log('Returning data URL image (UPLOAD_TARGET=dataurl)');
     } else {
       // Convert to high-quality WebP for 300dpi printing
-      // Using 1800x1200 (3:2) for landscape format - excellent for 300dpi printing (6in x 4in at 300dpi)
+      // Using 1800x1800 (1:1) for square format - excellent for 300dpi printing (6in x 6in at 300dpi)
       // First get metadata to verify input size
       const metadata = await sharp(outBuffer).metadata();
-      console.log(`Resizing image from ${metadata.width}x${metadata.height} to 1800x1200`);
-
+      console.log(`Resizing image from ${metadata.width}x${metadata.height} to 1800x1800`);
+      
       const webpBuffer = await sharp(outBuffer)
         .rotate()
-        .resize(1800, 1200, {
-          fit: 'fill', // Force exact 1800x1200 dimensions (no cropping, upscales if needed)
+        .resize(1800, 1800, {
+          fit: 'fill', // Force exact 1800x1800 dimensions (no cropping, upscales if needed)
           withoutEnlargement: false, // Allow upscaling if needed
         })
         .toFormat('webp', { quality: 95 }) // High quality for printing
         .toBuffer();
-
+      
       // Verify output size
       const outputMetadata = await sharp(webpBuffer).metadata();
       console.log(`Resized image to ${outputMetadata.width}x${outputMetadata.height}`);
