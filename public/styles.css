@@ -319,10 +319,10 @@ body {
     right: 16px !important;
     top: auto !important;
     left: auto !important;
-    width: 90px !important;
+    width: 900px !important;
     height: auto !important;
-    max-width: 90px !important;
-    max-height: 90px !important;
+    max-width: 900px !important;
+    max-height: 900px !important;
     z-index: 21 !important;
     pointer-events: none !important;
     object-fit: contain !important;
