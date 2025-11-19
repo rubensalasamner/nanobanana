@@ -785,8 +785,8 @@ if (btnChangeStyle) {
           let restoredText = 'Style'; // default
           if (prompt.includes('figurine')) restoredText = '3D figurine';
           else if (prompt.includes('yearbook')) restoredText = "1980's yearbook";
-          else if (prompt.includes('Polaroid') || prompt.includes('instant-camera'))
-            restoredText = 'Polaroid';
+          else if (prompt.includes('film noir') || prompt.includes('noir'))
+            restoredText = 'Vintage film noir';
           else if (prompt.includes('Hairstyle') || prompt.includes('hair'))
             restoredText = 'Hairstyle change';
           else if (prompt.includes('headshot') || prompt.includes('LinkedIn'))
