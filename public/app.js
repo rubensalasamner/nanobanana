@@ -875,7 +875,7 @@ function handlePrint() {
       btnPrintResult.style.opacity = '';
       btnPrintResult.style.cursor = '';
       isPrinting = false;
-    }, 2000);
+    }, 10000);
   };
 }
 
