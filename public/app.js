@@ -795,6 +795,11 @@ if (btnChangeStyle) {
             restoredText = 'Hairstyle change';
           else if (prompt.includes('headshot') || prompt.includes('LinkedIn'))
             restoredText = 'Professional headshot';
+          else if (
+            prompt.includes('exactly as provided') ||
+            prompt.includes('Preserve all details')
+          )
+            restoredText = 'Take photo';
           else if (prompt.includes('painting') || prompt.includes('Impressionist'))
             restoredText = 'Photo to painting';
 
