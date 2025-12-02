@@ -52,6 +52,10 @@ const IDLE_TIMEOUT = 120000; // 2 minutes in milliseconds
 let isTakingSnapshot = false; // Prevent auto-taking pictures
 let styleStepClickBlocked = false; // Block clicks on style step immediately after navigation
 
+// ----- Print/Download Toggle -----
+// Set to true to download instead of print, false to use print dialog
+const PRINT_BUTTON_DOWNLOADS = true;
+
 const wizardSteps = {
   screensaver: stepScreensaver,
   welcome: stepWelcome,
@@ -785,8 +789,8 @@ if (btnChangeStyle) {
           let restoredText = 'Style'; // default
           if (prompt.includes('figurine')) restoredText = '3D figurine';
           else if (prompt.includes('yearbook')) restoredText = "1980's yearbook";
-          else if (prompt.includes('magazine cover') || prompt.includes('fashion magazine'))
-            restoredText = 'Vintage magazine cover';
+          else if (prompt.includes('1960s-inspired') || prompt.includes('60s-inspired'))
+            restoredText = '1960s inspired portrait';
           else if (prompt.includes('Hairstyle') || prompt.includes('hair'))
             restoredText = 'Hairstyle change';
           else if (prompt.includes('headshot') || prompt.includes('LinkedIn'))
@@ -835,11 +839,10 @@ if (btnShareResult) {
     }
   });
 }
-if (btnPrintResult) {
+// ----- Print/Download Functions -----
+function handlePrint() {
   let isPrinting = false;
-  // Use a single click handler instead of onTap to avoid double-firing
-  // (onTap adds both pointerup and click handlers which can cause duplicate prints)
-  btnPrintResult.addEventListener('click', (e) => {
+  return function (e) {
     e.preventDefault();
     e.stopPropagation();
     if (btnPrintResult.disabled || isPrinting) return;
@@ -868,7 +871,57 @@ if (btnPrintResult) {
       btnPrintResult.style.cursor = '';
       isPrinting = false;
     }, 2000);
-  });
+  };
+}
+
+function handleDownload() {
+  let isDownloading = false;
+  return function (e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (btnPrintResult.disabled || isDownloading) return;
+
+    // Prevent multiple download calls
+    isDownloading = true;
+
+    // Show printing message and grey out button
+    if (printingMessage) {
+      printingMessage.classList.remove('hidden');
+    }
+    btnPrintResult.disabled = true;
+    btnPrintResult.style.opacity = '0.5';
+    btnPrintResult.style.cursor = 'not-allowed';
+
+    // Download the image
+    const imageUrl = resultPhoto?.src || latestShare?.imageUrl;
+    if (imageUrl) {
+      const a = document.createElement('a');
+      a.href = imageUrl;
+      a.download = 'nanobanana-image.webp';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    // Hide printing message after download
+    setTimeout(() => {
+      if (printingMessage) {
+        printingMessage.classList.add('hidden');
+      }
+      btnPrintResult.disabled = false;
+      btnPrintResult.style.opacity = '';
+      btnPrintResult.style.cursor = '';
+      isDownloading = false;
+    }, 1000);
+  };
+}
+
+if (btnPrintResult) {
+  // Use a single click handler instead of onTap to avoid double-firing
+  // (onTap adds both pointerup and click handlers which can cause duplicate prints)
+  // Toggle between print and download based on PRINT_BUTTON_DOWNLOADS flag
+  const handler = PRINT_BUTTON_DOWNLOADS ? handleDownload() : handlePrint();
+  btnPrintResult.addEventListener('click', handler);
 }
 if (btnRestart) {
   onTap(btnRestart, restartFlow);
