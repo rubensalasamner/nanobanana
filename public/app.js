@@ -876,7 +876,7 @@ function handlePrint() {
 
 function handleDownload() {
   let isDownloading = false;
-  return function (e) {
+  return async function (e) {
     e.preventDefault();
     e.stopPropagation();
     if (btnPrintResult.disabled || isDownloading) return;
@@ -895,12 +895,36 @@ function handleDownload() {
     // Download the image
     const imageUrl = resultPhoto?.src || latestShare?.imageUrl;
     if (imageUrl) {
-      const a = document.createElement('a');
-      a.href = imageUrl;
-      a.download = 'nanobanana-image.webp';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      try {
+        // For cross-origin URLs (like Vercel Blob), we need to fetch as blob first
+        // Check if it's a data URL (local) or remote URL
+        if (imageUrl.startsWith('data:')) {
+          // Data URL - can download directly
+          const a = document.createElement('a');
+          a.href = imageUrl;
+          a.download = 'nanobanana-image.webp';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        } else {
+          // Remote URL - fetch as blob to enable download
+          const response = await fetch(imageUrl);
+          const blob = await response.blob();
+          const blobUrl = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = blobUrl;
+          a.download = 'nanobanana-image.webp';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          // Clean up the object URL
+          URL.revokeObjectURL(blobUrl);
+        }
+      } catch (error) {
+        console.error('Download failed:', error);
+        // Fallback: try opening in new tab if download fails
+        window.open(imageUrl, '_blank');
+      }
     }
 
     // Hide printing message after download
