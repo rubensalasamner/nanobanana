@@ -45,6 +45,7 @@ async function putR2(filename, buffer, options = {}) {
     accessKeyId: R2_ACCESS_KEY,
     secretAccessKey: R2_SECRET_KEY,
     service: 's3',
+    region: 'auto',
   });
 
   const response = await fetch(url.toString(), {
@@ -153,6 +154,7 @@ async function listR2(options = {}) {
     accessKeyId: R2_ACCESS_KEY,
     secretAccessKey: R2_SECRET_KEY,
     service: 's3',
+    region: 'auto',
   });
 
   const response = await fetch(url.toString(), {
@@ -195,6 +197,7 @@ async function delR2(pathname, options = {}) {
     accessKeyId: R2_ACCESS_KEY,
     secretAccessKey: R2_SECRET_KEY,
     service: 's3',
+    region: 'auto',
   });
 
   const response = await fetch(url.toString(), {
