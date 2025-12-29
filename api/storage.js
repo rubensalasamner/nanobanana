@@ -1,5 +1,6 @@
 // api/storage.js
 import aws4 from 'aws4';
+import crypto from 'crypto';
 
 const STORAGE_PROVIDER = (process.env.STORAGE_PROVIDER || 'r2').toLowerCase();
 
@@ -26,12 +27,16 @@ async function putR2(filename, buffer, options = {}) {
 
   const url = new URL(`${R2_ENDPOINT}/${R2_BUCKET}/${filename}`);
 
+  // Calculate SHA256 hash of the body
+  const bodyHash = crypto.createHash('sha256').update(buffer).digest('hex');
+
   const opts = {
     host: url.hostname,
     path: url.pathname,
     method: 'PUT',
     headers: {
       'Content-Type': options.contentType || 'application/octet-stream',
+      'x-amz-content-sha256': bodyHash,
     },
     body: buffer,
   };
@@ -131,10 +136,16 @@ async function listR2(options = {}) {
 
   const url = new URL(`${R2_ENDPOINT}/${R2_BUCKET}?${params.toString()}`);
 
+  // For GET requests without body, use empty string hash
+  const emptyHash = crypto.createHash('sha256').update('').digest('hex');
+
   const opts = {
     host: url.hostname,
     path: url.pathname + url.search,
     method: 'GET',
+    headers: {
+      'x-amz-content-sha256': emptyHash,
+    },
   };
 
   aws4.sign(opts, {
@@ -166,10 +177,16 @@ async function delR2(pathname, options = {}) {
 
   const url = new URL(`${R2_ENDPOINT}/${R2_BUCKET}/${pathname}`);
 
+  // For DELETE requests without body, use empty string hash
+  const emptyHash = crypto.createHash('sha256').update('').digest('hex');
+
   const opts = {
     host: url.hostname,
     path: url.pathname,
     method: 'DELETE',
+    headers: {
+      'x-amz-content-sha256': emptyHash,
+    },
   };
 
   aws4.sign(opts, {
