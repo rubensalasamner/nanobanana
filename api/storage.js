@@ -44,6 +44,7 @@ async function putR2(filename, buffer, options = {}) {
   aws4.sign(opts, {
     accessKeyId: R2_ACCESS_KEY,
     secretAccessKey: R2_SECRET_KEY,
+    service: 's3',
   });
 
   const response = await fetch(url.toString(), {
@@ -151,6 +152,7 @@ async function listR2(options = {}) {
   aws4.sign(opts, {
     accessKeyId: R2_ACCESS_KEY,
     secretAccessKey: R2_SECRET_KEY,
+    service: 's3',
   });
 
   const response = await fetch(url.toString(), {
@@ -192,6 +194,7 @@ async function delR2(pathname, options = {}) {
   aws4.sign(opts, {
     accessKeyId: R2_ACCESS_KEY,
     secretAccessKey: R2_SECRET_KEY,
+    service: 's3',
   });
 
   const response = await fetch(url.toString(), {
