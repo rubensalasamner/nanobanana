@@ -3,7 +3,7 @@ import Busboy from 'busboy';
 import { GoogleGenAI } from '@google/genai';
 import QRCode from 'qrcode';
 import { nanoid } from 'nanoid';
-import { put as blobPut, list as blobList, del as blobDel } from '@vercel/blob';
+import { put as blobPut, list as blobList, del as blobDel } from './storage.js';
 import sharp from 'sharp';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
