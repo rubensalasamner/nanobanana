@@ -1,6 +1,10 @@
 // api/storage.js
-import aws4 from 'aws4';
-import crypto from 'crypto';
+import {
+  S3Client,
+  PutObjectCommand,
+  ListObjectsV2Command,
+  DeleteObjectCommand,
+} from '@aws-sdk/client-s3';
 
 const STORAGE_PROVIDER = (process.env.STORAGE_PROVIDER || 'r2').toLowerCase();
 
@@ -17,199 +21,86 @@ if (STORAGE_PROVIDER === 'vercel') {
   vercelBlob = await import('@vercel/blob');
 }
 
+// Initialize S3 client for R2
+let s3Client;
+if (STORAGE_PROVIDER === 'r2' && R2_ENDPOINT && R2_BUCKET && R2_ACCESS_KEY && R2_SECRET_KEY) {
+  s3Client = new S3Client({
+    region: 'auto',
+    endpoint: R2_ENDPOINT,
+    credentials: {
+      accessKeyId: R2_ACCESS_KEY,
+      secretAccessKey: R2_SECRET_KEY,
+    },
+  });
+}
+
 /**
  * Upload a file to R2 (S3-compatible API)
  */
 async function putR2(filename, buffer, options = {}) {
-  if (!R2_ENDPOINT || !R2_BUCKET || !R2_ACCESS_KEY || !R2_SECRET_KEY) {
+  if (!s3Client) {
     throw new Error('R2 credentials not configured');
   }
 
-  const url = new URL(`${R2_ENDPOINT}/${R2_BUCKET}/${filename}`);
-
-  // Calculate SHA256 hash of the body
-  const bodyHash = crypto.createHash('sha256').update(buffer).digest('hex');
-
-  const opts = {
-    host: url.hostname,
-    path: url.pathname,
-    method: 'PUT',
-    headers: {
-      'Content-Type': options.contentType || 'application/octet-stream',
-      'x-amz-content-sha256': bodyHash,
-    },
-    body: buffer,
-  };
-
-  aws4.sign(opts, {
-    accessKeyId: R2_ACCESS_KEY,
-    secretAccessKey: R2_SECRET_KEY,
-    service: 's3',
-    region: 'auto',
+  const command = new PutObjectCommand({
+    Bucket: R2_BUCKET,
+    Key: filename,
+    Body: buffer,
+    ContentType: options.contentType || 'application/octet-stream',
   });
 
-  const response = await fetch(url.toString(), {
-    method: 'PUT',
-    headers: opts.headers,
-    body: buffer,
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`R2 upload failed: ${response.status} ${text}`);
-  }
+  await s3Client.send(command);
 
   // Return public URL
-  const publicUrl = R2_PUBLIC_URL ? `${R2_PUBLIC_URL}/${filename}` : `${url.origin}/${filename}`;
+  const publicUrl = R2_PUBLIC_URL
+    ? `${R2_PUBLIC_URL}/${filename}`
+    : `${R2_ENDPOINT}/${R2_BUCKET}/${filename}`;
 
   return { url: publicUrl };
-}
-
-/**
- * Parse XML response from S3 ListObjectsV2
- */
-function parseListResponse(xml) {
-  const blobs = [];
-
-  // Extract keys
-  const keyRegex = /<Key>(.*?)<\/Key>/g;
-  let keyMatch;
-  const keys = [];
-  while ((keyMatch = keyRegex.exec(xml)) !== null) {
-    keys.push(keyMatch[1]);
-  }
-
-  // Extract last modified dates
-  const dateRegex = /<LastModified>(.*?)<\/LastModified>/g;
-  let dateMatch;
-  const dates = [];
-  while ((dateMatch = dateRegex.exec(xml)) !== null) {
-    dates.push(dateMatch[1]);
-  }
-
-  // Extract sizes
-  const sizeRegex = /<Size>(.*?)<\/Size>/g;
-  let sizeMatch;
-  const sizes = [];
-  while ((sizeMatch = sizeRegex.exec(xml)) !== null) {
-    sizes.push(parseInt(sizeMatch[1], 10));
-  }
-
-  // Combine into blob objects
-  keys.forEach((key, i) => {
-    blobs.push({
-      pathname: key,
-      uploadedAt: dates[i] || new Date().toISOString(),
-      size: sizes[i] || 0,
-    });
-  });
-
-  // Check if truncated
-  const isTruncated = xml.includes('<IsTruncated>true</IsTruncated>');
-
-  // Get continuation token
-  const tokenMatch = xml.match(/<NextContinuationToken>(.*?)<\/NextContinuationToken>/);
-  const nextCursor = tokenMatch ? tokenMatch[1] : undefined;
-
-  return {
-    blobs,
-    hasMore: isTruncated,
-    cursor: nextCursor,
-  };
 }
 
 /**
  * List objects in R2
  */
 async function listR2(options = {}) {
-  if (!R2_ENDPOINT || !R2_BUCKET || !R2_ACCESS_KEY || !R2_SECRET_KEY) {
+  if (!s3Client) {
     throw new Error('R2 credentials not configured');
   }
 
-  const prefix = options.prefix || '';
-  const params = new URLSearchParams({
-    'list-type': '2',
-    prefix: prefix,
+  const command = new ListObjectsV2Command({
+    Bucket: R2_BUCKET,
+    Prefix: options.prefix || '',
+    ContinuationToken: options.cursor,
+    MaxKeys: 1000,
   });
 
-  if (options.cursor) {
-    params.append('continuation-token', options.cursor);
-  }
+  const response = await s3Client.send(command);
 
-  const url = new URL(`${R2_ENDPOINT}/${R2_BUCKET}?${params.toString()}`);
-
-  // For GET requests without body, use empty string hash
-  const emptyHash = crypto.createHash('sha256').update('').digest('hex');
-
-  const opts = {
-    host: url.hostname,
-    path: url.pathname + url.search,
-    method: 'GET',
-    headers: {
-      'x-amz-content-sha256': emptyHash,
-    },
+  return {
+    blobs: (response.Contents || []).map((obj) => ({
+      pathname: obj.Key,
+      uploadedAt: obj.LastModified?.toISOString(),
+      size: obj.Size || 0,
+    })),
+    hasMore: response.IsTruncated || false,
+    cursor: response.NextContinuationToken,
   };
-
-  aws4.sign(opts, {
-    accessKeyId: R2_ACCESS_KEY,
-    secretAccessKey: R2_SECRET_KEY,
-    service: 's3',
-    region: 'auto',
-  });
-
-  const response = await fetch(url.toString(), {
-    method: 'GET',
-    headers: opts.headers,
-  });
-
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`R2 list failed: ${response.status} ${text}`);
-  }
-
-  const xml = await response.text();
-  return parseListResponse(xml);
 }
 
 /**
  * Delete an object from R2
  */
 async function delR2(pathname, options = {}) {
-  if (!R2_ENDPOINT || !R2_BUCKET || !R2_ACCESS_KEY || !R2_SECRET_KEY) {
+  if (!s3Client) {
     throw new Error('R2 credentials not configured');
   }
 
-  const url = new URL(`${R2_ENDPOINT}/${R2_BUCKET}/${pathname}`);
-
-  // For DELETE requests without body, use empty string hash
-  const emptyHash = crypto.createHash('sha256').update('').digest('hex');
-
-  const opts = {
-    host: url.hostname,
-    path: url.pathname,
-    method: 'DELETE',
-    headers: {
-      'x-amz-content-sha256': emptyHash,
-    },
-  };
-
-  aws4.sign(opts, {
-    accessKeyId: R2_ACCESS_KEY,
-    secretAccessKey: R2_SECRET_KEY,
-    service: 's3',
-    region: 'auto',
+  const command = new DeleteObjectCommand({
+    Bucket: R2_BUCKET,
+    Key: pathname,
   });
 
-  const response = await fetch(url.toString(), {
-    method: 'DELETE',
-    headers: opts.headers,
-  });
-
-  // 204 No Content is success for DELETE
-  if (!response.ok && response.status !== 204) {
-    const text = await response.text();
-    throw new Error(`R2 delete failed: ${response.status} ${text}`);
-  }
+  await s3Client.send(command);
 }
 
 // Export functions with same interface as Vercel Blob
