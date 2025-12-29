@@ -13,7 +13,7 @@
   // make sure ESLint doesn't try to format (we use it only for fixes)
   "eslint.format.enable": false,
   "editor.codeActionsOnSave": {
-    "source.fixAll.eslint": true
+    "source.fixAll.eslint": "explicit"
   },
 
   // (optional) format the whole file on save, not just changed lines

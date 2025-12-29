@@ -12,24 +12,32 @@
       href="./styles.css"
     />
     <style media="print">
-      /* Print styles */
+      /* Print styles - Responsive to paper size */
       @page {
-        size: auto;
-        margin: 0.5in;
+        size: auto; /* Let user's paper size selection take effect */
+        margin: 0.3in 0.2in 0.4in 0.2in; /* top right bottom left - extra bottom margin for logo */
       }
       body {
-        background: white;
-        color: black;
+        background: #fff;
+        color: #000;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh; /* Use full page height */
       }
       .wrap {
-        display: block;
+        width: 100%;
+        max-width: 100%;
         padding: 0;
       }
       .card {
         border: none;
         box-shadow: none;
         padding: 0;
-        background: white;
+        background: transparent;
       }
       .bar,
       .grid,
@@ -39,221 +47,441 @@
       button,
       #qr,
       #btnCopy,
-      #btnOpen {
+      #btnOpen,
+      .step-nav,
+      .step-footer,
+      .wizard-step:not(#step-result),
+      .result-actions,
+      .ai-overlay,
+      .camera-brand,
+      .result-title,
+      .printing-message {
         display: none !important;
       }
-      .stage {
-        max-width: 100%;
-        aspect-ratio: auto;
-        background: white;
-        border-radius: 0;
-      }
-      .stage img {
+      #step-result {
+        display: flex !important;
+        flex-direction: column;
+        align-items: center;
+        position: static !important;
         width: 100%;
-        height: auto;
-        object-fit: contain;
+        height: 100vh;
+        justify-content: center;
+      }
+      .result-container {
+        display: flex !important;
+        flex-direction: column;
+        align-items: center;
+        width: 100%;
+        height: 100%;
+        justify-content: center;
+      }
+      .stage,
+      .result-stage {
+        /* Responsive sizing - adapts to paper size */
+        width: 80%; /* Use 80% of available width - reduced to leave room for logo */
+        height: 80%; /* Use 80% of available height - reduced to leave room for logo */
+        max-width: 80%;
+        max-height: 80%;
+        aspect-ratio: 1 / 1; /* Maintain square (1:1) ratio */
+        overflow: visible !important; /* Allow logo to extend beyond container */
+        position: relative !important;
+      }
+      .stage img,
+      .result-stage img:not(.google-logo-overlay) {
+        width: 100%;
+        height: 100%;
+        object-fit: fill; /* Stretch to fill entire square - takes up maximum space */
         border-radius: 0;
-        background: white;
+        background: #fff;
+      }
+      .print-logo {
+        display: block !important;
+        width: 40%; /* Much larger logo */
+        max-width: 4in; /* Larger max size */
+        height: auto;
+        margin-top: 2%; /* More spacing */
+        opacity: 0.8;
+      }
+      video,
+      canvas {
+        display: none !important;
       }
       h2 {
         display: none;
       }
     </style>
+    <style>
+      /* Hide logo on screen, show only when printing */
+      .print-logo {
+        display: none;
+      }
+    </style>
   </head>
   <body>
-    <div class="wrap">
-      <!-- Left: Camera -->
-      <section class="card">
-        <div class="bar">
-          <h2>📷 Camera</h2>
-          <div class="row">
-            <button
-              id="btnStart"
-              class="primary"
-            >
-              Start camera
-            </button>
-            <button
-              id="btnSnap"
-              disabled
-            >
-              Take picture
-            </button>
-            <button
-              id="btnRetake"
-              class="ghost hidden"
-            >
-              Retake
-            </button>
-          </div>
-        </div>
+    <div
+      class="step-nav"
+      id="stepNav"
+    >
+      <button data-step="screensaver">Screensaver</button>
+      <button data-step="welcome">Welcome</button>
+      <button data-step="camera">Camera</button>
+      <button data-step="style">Style</button>
+      <button data-step="result">Result</button>
+    </div>
 
-        <div class="stage">
-          <video
-            id="video"
-            playsinline
-            autoplay
-            muted
-            class="hidden"
-          ></video>
-          <canvas
-            id="canvas"
-            class="hidden"
-          ></canvas>
-          <img
-            id="photo"
-            alt="snapshot"
-            class="hidden"
-          />
-          <div
-            id="countdown"
-            class="hidden"
-          ></div>
-        </div>
-
-        <p
-          class="status"
-          id="camStatus"
+    <!-- Step 3: Style Selection -->
+    <div
+      id="step-style"
+      class="wizard-step"
+    >
+      <div class="style-container">
+        <p class="camera-brand">Nano Banana</p>
+        <h2
+          class="style-title"
+          style="margin-bottom: 20px"
         >
-          Camera is idle.
-        </p>
-      </section>
-
-      <!-- Right: Presets -->
-      <section class="card">
-        <h2>🎛️ Presets</h2>
-
+          Choose your style
+        </h2>
+        <img
+          id="stylePreview"
+          class="style-preview hidden"
+          alt="Your photo"
+        />
         <div
-          class="grid"
+          class="style-grid"
           id="presetGrid"
         >
-          <!-- 3D Figurine (single-person safe) -->
           <button
-            class="chip"
-            data-prompt="Use the uploaded webcam photo as the only reference image. Create a 1/7-scale commercial figurine of the person in the photo, realistic style, in a real environment. Place the figurine on a computer desk with a round transparent acrylic base. Put Light Green text on the base with the person’s name only if text is already present in the original image; otherwise avoid adding any text. Show a computer screen displaying the figurine’s 3D modeling process and a nearby toy packaging box that uses two-dimensional flat illustrations based on the same person. Keep facial likeness accurate. Do not add extra people. Avoid watermarks or captions."
+            class="style-card"
+            data-prompt="Use the uploaded webcam photo as the only reference image. Create a 1/7-scale commercial figurine of the person in the photo, realistic style, in a real environment. Place the figurine on a computer desk with a round transparent acrylic base. Put Light Green text on the base with the person's name only if text is already present in the original image; otherwise avoid adding any text. Show a computer screen displaying the figurine's 3D modeling process and a nearby toy packaging box that uses two-dimensional flat illustrations based on the same person. Keep facial likeness accurate. Do not add extra people. Avoid watermarks or captions."
           >
-            👑 Make me a 3D Figurine
+            3D figurine
           </button>
-
-          <!-- 1980s Yearbook (single-person, identity preserved) -->
           <button
-            class="chip"
+            class="style-card"
             data-prompt="Use the uploaded webcam photo as the only reference image. Generate a 1980s yearbook portrait of this person. Preserve the exact face and identity. You may change background, hairstyle, facial hair, glasses, outfit, and lighting to fit 1980s ‘glamour shots’ aesthetics (big hair, mullets, large glasses, soft/foggy lighting, fun backdrops). No added text or watermarks. Single subject only."
           >
-            1980’s Yearbook
+            1980’s yearbook
           </button>
-
-          <!-- Polaroid -->
           <button
-            class="chip"
-            data-prompt="Use the uploaded webcam photo as the only reference image. Generate a 4K ultra-realistic instant-camera (Polaroid-style) photo of this person. Preserve facial features exactly. Add gentle motion blur and flash-like lighting. Use a soft white curtain backdrop. Natural, candid snapshot vibe. No added text. Single subject only."
+            class="style-card"
+            data-prompt="Use the uploaded webcam photo as the only reference image. Create a 1960s-inspired fashion portrait of this person. Preserve the exact facial features, outfit, and background from the original photo, but restyle them with 60s color grading, soft glamorous lighting, subtle film grain, and gentle lens blur. Add retro-inspired makeup, hair finishing touches, or accessories that feel true to the era while keeping the same wardrobe silhouette. Maintain landscape orientation and keep the scene rooted in the original composition—just enhance it with a distinctly 1960s photographic look. Single subject only. No added text."
           >
-            Polaroid
+            1960s inspired portrait
           </button>
-
-          <!-- Hair Style Change -->
           <button
-            class="chip"
-            data-prompt="Use the uploaded webcam photo as the only reference image. Show what this person would look like with medium-length chestnut brown hair. Change only hair color, length, texture, and style as specified. Keep the same face, skin tone, and lighting. Do not modify age or body. No added text."
+            class="style-card"
+            data-prompt="Use the uploaded webcam photo as the only reference image. Transform this person's hairstyle with a bold, radical, and dramatic change. Create a completely different hairstyle - choose from vibrant colors (bright blue, electric pink, neon green, platinum blonde, fiery red, or bold purple), extreme cuts (undercut, mohawk, shaved sides, asymmetrical bob, long waves, or spiky textured), and dramatic styles (curly, straight, braided, or voluminous). Keep the person against a simple studio backdrop with a subtle textured or gradient pattern (like mottled paint, soft bokeh, or abstract brush strokes). Avoid complex or scenic environments. Make the hairstyle transformation striking and eye-catching while keeping the same face, skin tone, and lighting. Do not modify age or body. No added text."
           >
-            Hair Style Change
+            Hairstyle change
           </button>
-
-          <!-- Hugging Younger Self -->
           <button
-            class="chip"
-            data-prompt="Use the uploaded webcam photo as the only reference image. Create a Polaroid-style photo where this person appears twice: an ‘older self’ and a ‘younger self’ hugging, both facing the camera. Preserve the same identity for both subjects. Adjust hair/outfit subtly to imply age difference while keeping natural skin tones. White curtain background, slight blur, flash-like lighting. No added text."
+            class="style-card"
+            data-prompt="Use the uploaded webcam photo as the only reference image. Transform this portrait into a high-quality professional LinkedIn headshot. Preserve the exact facial features and identity. Dress the person in professional business attire - a sharp, well-fitted suit jacket, dress shirt, and tie (or professional blazer/blouse for any gender). Use a clean, sharp, professional office or corporate background - modern office interior, professional studio backdrop, or corporate building setting with crisp, in-focus details. Apply professional photography lighting - bright, even, flattering light that enhances the subject. Add subtle professional photo filters for a polished, corporate look - enhance contrast, sharpen details, and add a professional color grade. Frame tightly on head and upper shoulders. Make the person look confident, intelligent, and professional. The overall image should be sharp, well-lit, and suitable for a professional profile. Single subject only. No added text or watermarks."
           >
-            Hugging Younger Self
+            Professional headshot
           </button>
-
-          <!-- Photo to Painting (concrete values, no placeholders) -->
+        <!--   <button
+            class="style-card"
+            data-prompt="Use the uploaded webcam photo exactly as provided. Preserve all details, colors, lighting, and composition without any modifications or transformations."
+          >
+            Take photo
+          </button> -->
           <button
-            class="chip"
+            class="style-card"
             data-prompt="Use the uploaded webcam photo as the only reference image.
 Reimagine this portrait as an Impressionist oil painting set in the 1880s.
 Present the final as a photographed framed artwork in a matte gold frame.
 Maintain accurate facial likeness and identity. No added text or signatures."
           >
-            Photo to Painting
-          </button>
-
-          <!-- LinkedIn Headshot -->
-          <button
-            class="chip"
-            data-prompt="Use the uploaded webcam photo as the only reference image. Transform this portrait into a high-quality professional LinkedIn headshot. Preserve the exact face and identity. Highlight natural features (eyes, hair, skin tone) with true-to-life colors and smooth, even lighting. Use a clean, neutral cityscape background with soft depth of field to keep focus on the subject. Frame tightly on head and upper shoulders. The image should be sharp, well-lit, and convey confidence and professionalism while retaining all natural features and appearance. Single subject only. No added text or watermarks."
-          >
-            💼 LinkedIn Headshot
+            Photo to painting
           </button>
         </div>
+      </div>
+    </div>
 
-        <div class="row mt">
-          <button
-            id="btnApply"
-            class="primary"
-            disabled
-          >
-            <span id="applyText">Apply preset</span>
-            <span
-              id="applySpinner"
-              class="spinner hidden"
-              aria-hidden="true"
-            ></span>
-          </button>
-          <button
-            id="btnDownload"
-            disabled
-          >
-            Download result
-          </button>
-          <button
-            id="btnPrint"
-            disabled
-          >
-            🖨️ Print
-          </button>
-        </div>
-
-        <p
-          class="status"
-          id="apiStatus"
-        >
-          Take a picture, pick a preset, then apply.
-        </p>
-
-        <div class="row mt">
+    <!-- Step 4: Result -->
+    <div
+      id="step-result"
+      class="wizard-step"
+    >
+      <div class="result-container">
+        <p class="camera-brand">Nano Banana</p>
+        <h2 class="result-title">Here is your image</h2>
+        <div class="result-stage">
           <img
-            id="qr"
+            id="resultPhoto"
+            alt="Your Nano Banana image"
             class="hidden"
-            alt="QR code to your photo"
+          />
+          <!-- Google logo overlay - only visible in print -->
+          <img
+            src="./assets/images/Gemini_Logo_Lockup_White.png"
+            alt="Gemini"
+            class="google-logo-overlay"
+          />
+        </div>
+        <div class="result-actions">
+          <button
+            id="btnChangeStyle"
+            class="pill-btn"
+          >
+            Change style
+          </button>
+          <button
+            id="btnShareResult"
+            class="pill-btn"
+            disabled
+          >
+            Share
+          </button>
+          <button
+            id="btnPrintResult"
+            class="pill-btn"
+            disabled
+          >
+            Print
+          </button>
+        </div>
+        <div
+          id="printingMessage"
+          class="printing-message hidden"
+        >
+          <p class="printing-text">Printing...</p>
+          <div class="printing-arrow">↓</div>
+        </div>
+        <button
+          id="btnRestart"
+          class="pill-btn outline"
+        >
+          &lt; Start over
+        </button>
+      </div>
+    </div>
+    <!-- Step 5: Share -->
+    <div
+      id="step-share"
+      class="wizard-step"
+    >
+      <div class="share-container">
+        <div class="share-header">
+          <p class="share-brand">Nano Banana</p>
+          <h1 class="share-title">Share your image</h1>
+        </div>
+
+        <div class="share-qr-container">
+          <img
+            id="shareQRCode"
+            alt="QR Code"
+            class="share-qr-code"
           />
         </div>
 
-        <div class="row mt">
+        <p class="share-instruction">Scan the QR code to view and share your image</p>
+
+        <button
+          id="btnBackFromShare"
+          class="pill-btn outline"
+        >
+          &lt; Back
+        </button>
+      </div>
+    </div>
+    <!-- Step 0: Screensaver -->
+    <div
+      id="step-screensaver"
+      class="wizard-step active"
+    >
+      <video
+        id="screensaver-video"
+        class="screensaver-video"
+        autoplay
+        loop
+        muted
+        playsinline
+      >
+        <source
+          src="./assets/BG-video.mp4"
+          type="video/mp4"
+        />
+      </video>
+    </div>
+
+    <!-- Step 1: Welcome -->
+    <div
+      id="step-welcome"
+      class="wizard-step"
+    >
+      <div class="welcome-container">
+        <div class="welcome-content">
+          <h1 class="welcome-title">Go Bananas</h1>
+          <p class="welcome-text">
+            Try out Nano Banana
+            <span class="banana-emoji">🍌</span>
+            <br />
+            - Image generating and
+            <br />
+            photo editor in Gemini
+          </p>
           <button
-            id="btnCopy"
-            class="ghost hidden"
+            id="btnStartHere"
+            class="primary welcome-button"
           >
-            Copy link
+            Start here
           </button>
-          <a
-            id="btnOpen"
-            class="ghost hidden"
-            target="_blank"
-            rel="noopener"
-          >
-            Open link
-          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2: Camera -->
+    <div
+      id="step-camera"
+      class="wizard-step"
+    >
+      <div class="camera-container">
+        <div class="camera-simple-headline">
+          <p class="camera-brand">Nano Banana</p>
+          <h2 class="camera-title">Take a picture</h2>
         </div>
 
-        <div class="hint">
-          Tip: Works with touch
-          <em>and</em>
-          mouse clicks. On desktop, press
-          <kbd>Space</kbd>
-          to snap.
+        <div class="wrap camera-wrap">
+          <!-- Hero camera card -->
+          <section class="card camera-card">
+            <div class="stage hidden">
+              <video
+                id="video"
+                playsinline
+                autoplay
+                muted
+                class="hidden"
+              ></video>
+              <canvas
+                id="canvas"
+                class="hidden"
+              ></canvas>
+              <img
+                id="photo"
+                alt="snapshot"
+                class="hidden"
+              />
+              <div
+                id="countdown"
+                class="hidden"
+              ></div>
+            </div>
+
+            <div class="camera-actions">
+              <button
+                id="btnStart"
+                class="ghost hidden"
+              >
+                Start camera
+              </button>
+              <button
+                id="btnSnap"
+                class="primary"
+                disabled
+              >
+                <span id="btnSnapText">Take picture</span>
+                <span
+                  id="btnSnapSpinner"
+                  class="camera-spinner hidden"
+                ></span>
+              </button>
+              <button
+                id="btnRetake"
+                class="ghost hidden"
+              >
+                Retake
+              </button>
+            </div>
+
+            <p
+              class="status visually-hidden"
+              id="camStatus"
+            >
+              Camera is idle.
+            </p>
+          </section>
+
+          <!-- Hidden advanced controls for API hooks -->
+          <section
+            class="card advanced-panel"
+            aria-hidden="true"
+          >
+            <div class="row mt">
+              <button
+                id="btnApply"
+                class="primary"
+                disabled
+              >
+                <span id="applyText">Apply preset</span>
+                <span
+                  id="applySpinner"
+                  class="spinner hidden"
+                  aria-hidden="true"
+                ></span>
+              </button>
+              <button
+                id="btnDownload"
+                disabled
+              >
+                Download result
+              </button>
+              <button
+                id="btnPrint"
+                disabled
+              >
+                🖨️ Print
+              </button>
+            </div>
+
+            <p
+              class="status"
+              id="apiStatus"
+            >
+              Take a picture, pick a preset, then apply.
+            </p>
+
+            <div class="row mt">
+              <img
+                id="qr"
+                class="hidden"
+                alt="QR code to your photo"
+              />
+            </div>
+
+            <div class="row mt">
+              <button
+                id="btnCopy"
+                class="ghost hidden"
+              >
+                Copy link
+              </button>
+              <a
+                id="btnOpen"
+                class="ghost hidden"
+                target="_blank"
+                rel="noopener"
+              >
+                Open link
+              </a>
+            </div>
+          </section>
         </div>
-      </section>
+      </div>
+    </div>
+
+    <div class="step-footer">
+      <img
+        src="./assets/images/Gemini-logo.png"
+        alt="Gemini"
+        class="footer-logo"
+      />
+      <p class="footer-note">
+        Image files are stored temporarily for one (1) hour, after which they are permanently
+        deleted.
+      </p>
     </div>
 
     <script

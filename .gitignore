@@ -7,3 +7,4 @@ build
 coverage
 public/**/*.min.js.env
 .env
+public/shares/*

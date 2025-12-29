@@ -3,11 +3,12 @@ import Busboy from 'busboy';
 import { GoogleGenAI } from '@google/genai';
 import QRCode from 'qrcode';
 import { nanoid } from 'nanoid';
-import { put as blobPut, list as blobList, del as blobDel } from '@vercel/blob';
+import { put as blobPut, list as blobList, del as blobDel } from './storage.js';
 import sharp from 'sharp';
+import { readFile } from 'fs/promises';
+import { join } from 'path';
 
 export const config = {
-  api: { bodyParser: false }, // we handle multipart ourselves
   runtime: 'nodejs',
   maxDuration: 30,
 };
@@ -97,6 +98,29 @@ function getPathnameFromUrl(u) {
   }
 }
 
+function getOrigin(req) {
+  const proto = req.headers['x-forwarded-proto'] || 'https';
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  return `${proto}://${host}`;
+}
+
+/**
+ * Load the black 4x6 aspect ratio template image (blackbg.png)
+ */
+async function load4x6BlackImage() {
+  try {
+    // Path relative to project root: public/assets/images/blackbg.png
+    // In Vercel, process.cwd() points to the project root
+    const imagePath = join(process.cwd(), 'public', 'assets', 'images', 'blackbg.png');
+    const imageBuffer = await readFile(imagePath);
+    return imageBuffer;
+  } catch (err) {
+    // Fallback: if file not found, log error and return null
+    console.error('Failed to load blackbg.png:', err);
+    throw new Error('Failed to load template image');
+  }
+}
+
 /** ===== Route handlers ===== */
 async function handleHealthz(_req, res) {
   res.status(200).json({ ok: true });
@@ -111,16 +135,51 @@ async function handleDiag(_req, res) {
   });
 }
 
-async function runGeminiEdit(fileMime, fileBuf, prompt) {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-  const resp = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-image',
-    contents: [
-      { text: prompt },
-      { inlineData: { mimeType: fileMime || 'image/jpeg', data: fileBuf.toString('base64') } },
-    ],
-  });
-  return extractFirstImage(resp);
+async function runGeminiEdit(fileMime, fileBuf, prompt, reqId, templateImageBuf = null) {
+  try {
+    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+    // Build contents array with prompt and images
+    const contents = [{ text: prompt }];
+
+    // Add user's image as image 1
+    contents.push({
+      inlineData: { mimeType: fileMime || 'image/jpeg', data: fileBuf.toString('base64') },
+    });
+
+    // Add template image (black) as image 2 if provided
+    if (templateImageBuf) {
+      contents.push({
+        inlineData: { mimeType: 'image/png', data: templateImageBuf.toString('base64') },
+      });
+    }
+
+    const resp = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents,
+      config: {
+        imageConfig: {
+          aspectRatio: '1:1', // Square (1:1) ratio
+        },
+      },
+    });
+    const result = extractFirstImage(resp);
+    if (!result && resp) {
+      // Log the response to see what we got instead of an image
+      log(reqId, 'warn', 'gemini.noImage', {
+        prompt: prompt.substring(0, 100),
+        candidates: resp?.candidates?.length || 0,
+        response: JSON.stringify(resp).substring(0, 500),
+      });
+    }
+    return result;
+  } catch (err) {
+    log(reqId, 'error', 'gemini.error', {
+      message: err?.message,
+      prompt: prompt.substring(0, 100),
+    });
+    throw err;
+  }
 }
 
 async function handleEdit(req, res, reqId) {
@@ -135,9 +194,15 @@ async function handleEdit(req, res, reqId) {
     model: 'gemini-2.5-flash-image',
     mime: fileMime,
     size: fileSize,
+    promptLength: prompt.length,
   });
-  const outImg = await runGeminiEdit(fileMime, fileBuf, prompt);
-  if (!outImg) return res.status(422).json({ error: 'Model returned no image' });
+  const outImg = await runGeminiEdit(fileMime, fileBuf, prompt, reqId);
+  if (!outImg) {
+    log(reqId, 'error', 'gemini.noImage', { prompt: prompt.substring(0, 100) });
+    return res.status(422).json({
+      error: 'Model returned no image. The prompt may not be suitable for image generation.',
+    });
+  }
 
   log(reqId, 'log', 'gemini.ok', { outMime: outImg.mime, outBytes: outImg.buf.length });
   res.setHeader('Content-Type', outImg.mime.startsWith('image/') ? outImg.mime : 'image/png');
@@ -149,27 +214,55 @@ async function handleEditAndShare(req, res, reqId) {
   if (!fileBuf) return res.status(400).json({ error: "No image uploaded (field 'image')" });
   if (fileSize > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Image too large' });
 
-  const prompt = String(fields.prompt ?? '');
-  if (!prompt) return res.status(400).json({ error: 'Missing prompt' });
+  const originalPrompt = String(fields.prompt ?? '');
+  if (!originalPrompt) return res.status(400).json({ error: 'Missing prompt' });
+
+  // Combine original prompt with aspect ratio instruction and quality request
+  const prompt = `${originalPrompt}\n\nRedraw the content from image 1 in a 1:1 square aspect ratio. Adjust image 1 by adding content as needed to fill a perfect square (1:1) format. Make sure no blank areas are left. Generate a high-quality, detailed, sharp focus image suitable for 300dpi printing.`;
 
   log(reqId, 'log', 'gemini.request', {
     model: 'gemini-2.5-flash-image',
     mime: fileMime,
     size: fileSize,
+    promptLength: prompt.length,
+    hasTemplate: false,
   });
-  const outImg = await runGeminiEdit(fileMime, fileBuf, prompt);
-  if (!outImg) return res.status(422).json({ error: 'Model returned no image' });
+  const outImg = await runGeminiEdit(fileMime, fileBuf, prompt, reqId, null);
+  if (!outImg) {
+    log(reqId, 'error', 'gemini.noImage', { prompt: prompt.substring(0, 100) });
+    return res.status(422).json({
+      error: 'Model returned no image. The prompt may not be suitable for image generation.',
+    });
+  }
   log(reqId, 'log', 'gemini.ok', { outMime: outImg.mime, outBytes: outImg.buf.length });
 
   const id = nanoid(10);
-  let imageUrl, shareUrl;
+  const origin = getOrigin(req);
+  let imageUrl;
+  let outMime = outImg.mime;
 
   if (UPLOAD_TARGET === 'blob') {
-    // Convert image buffer to optimized WebP (~80% quality)
+    // Convert image buffer to high-quality WebP for 300dpi printing
+    // Using 1800x1800 (1:1) for square format - excellent for 300dpi printing (6in x 6in at 300dpi)
+    // First get metadata to verify input size
+    const metadata = await sharp(outImg.buf).metadata();
+    log(reqId, 'log', 'resize.input', { width: metadata.width, height: metadata.height });
+
     const webpBuf = await sharp(outImg.buf)
       .rotate() // auto-orient if needed
-      .toFormat('webp', { quality: 80 })
+      .resize(1800, 1800, {
+        fit: 'fill', // Force exact 1800x1800 dimensions (no cropping, upscales if needed)
+        withoutEnlargement: false, // Allow upscaling if needed
+      })
+      .toFormat('webp', { quality: 95 }) // High quality for printing
       .toBuffer();
+
+    // Verify output size
+    const outputMetadata = await sharp(webpBuf).metadata();
+    log(reqId, 'log', 'resize.output', {
+      width: outputMetadata.width,
+      height: outputMetadata.height,
+    });
 
     const filename = `shares/${id}.webp`;
     const putStart = Date.now();
@@ -181,14 +274,17 @@ async function handleEditAndShare(req, res, reqId) {
     });
     log(reqId, 'log', 'blob.put.ok', { filename, ms: Date.now() - putStart, url });
     imageUrl = url;
-    shareUrl = url;
+    outMime = 'image/webp';
   } else {
     // Fallback dev mode: return data URL (not recommended for production sharing)
     const base64 = `data:${outImg.mime};base64,${outImg.buf.toString('base64')}`;
     imageUrl = base64;
-    shareUrl = base64;
     log(reqId, 'log', 'share.dataurl.ok', { length: base64.length });
   }
+
+  const shareUrl = `${origin}/share.html?imageUrl=${encodeURIComponent(imageUrl)}&id=${id}&mime=${encodeURIComponent(
+    outMime
+  )}`;
 
   const qrStart = Date.now();
   const qrDataUrl = await QRCode.toDataURL(shareUrl, { margin: 1, scale: 6 });
@@ -199,7 +295,7 @@ async function handleEditAndShare(req, res, reqId) {
     ok: true,
     id,
     mode: UPLOAD_TARGET,
-    mime: outImg.mime,
+    mime: outMime,
     imageUrl: imageUrl,
     path, // blob pathname, handy for cleanup
     shareUrl,

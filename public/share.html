@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1"
+    />
+    <title>Your Photo - Nano Banana</title>
+    <meta
+      property="og:title"
+      content="Your Photo - Nano Banana"
+    />
+    <meta
+      property="og:type"
+      content="website"
+    />
+    <link
+      rel="stylesheet"
+      href="./styles.css"
+    />
+    <style>
+      @font-face {
+        font-family: 'Google Sans';
+        src: url('./assets/fonts/GoogleSans-Regular.ttf') format('truetype');
+        font-weight: 400;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: 'Google Sans';
+        src: url('./assets/fonts/GoogleSans-Medium.ttf') format('truetype');
+        font-weight: 500;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: 'Google Sans';
+        src: url('./assets/fonts/GoogleSans-Bold.ttf') format('truetype');
+        font-weight: 700;
+        font-style: normal;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: 'Google Sans';
+        src: url('./assets/fonts/GoogleSans-Italic.ttf') format('truetype');
+        font-weight: 400;
+        font-style: italic;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: 'Google Sans';
+        src: url('./assets/fonts/GoogleSans-MediumItalic.ttf') format('truetype');
+        font-weight: 500;
+        font-style: italic;
+        font-display: swap;
+      }
+
+      @font-face {
+        font-family: 'Google Sans';
+        src: url('./assets/fonts/GoogleSans-BoldItalic.ttf') format('truetype');
+        font-weight: 700;
+        font-style: italic;
+        font-display: swap;
+      }
+
+      body {
+        background: #fff;
+        color: #000;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 40px 16px 100px;
+        font-family:
+          'Google Sans',
+          ui-sans-serif,
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          Ubuntu;
+      }
+
+      .share-container {
+        width: 100%;
+        max-width: 600px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 24px;
+      }
+
+      .share-header {
+        text-align: center;
+      }
+
+      .share-brand {
+        margin: 0;
+        font-size: 33px;
+        font-weight: 600;
+        color: #4285f4;
+      }
+
+      .share-title {
+        margin: 4px 0 0 0;
+        font-size: clamp(36px, 5vw, 48px);
+        color: #000;
+        font-weight: 400;
+      }
+
+      .share-image-container {
+        width: min(420px, 90vw);
+        aspect-ratio: 1 / 1;
+        border-radius: 32px;
+        background: transparent;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .share-image-container img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        border-radius: 32px;
+        background: transparent;
+      }
+
+      .share-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        justify-content: center;
+        width: 100%;
+      }
+
+      .share-actions button,
+      .share-actions a.button {
+        appearance: none;
+        border: none;
+        background: #4285f4;
+        color: #fff;
+        padding: 20px 36px;
+        border-radius: 36px;
+        font-size: 28px;
+        min-width: 250px;
+        font-weight: 500;
+        text-decoration: none;
+        cursor: pointer;
+        font-family: inherit;
+        transition: opacity 0.2s;
+      }
+
+      @media (max-width: 768px) {
+        .share-actions button,
+        .share-actions a.button,
+        .share-links a {
+          padding: 16px 24px;
+          font-size: 20px;
+          min-width: 200px;
+        }
+      }
+
+      .share-actions button:hover,
+      .share-actions a.button:hover {
+        opacity: 0.9;
+      }
+
+      .share-actions button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .share-actions button.secondary,
+      .share-actions a.button.secondary {
+        background: transparent;
+        border: 2px solid #4285f4;
+        color: #4285f4;
+      }
+
+      .share-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: center;
+        width: 100%;
+      }
+
+      .share-links a {
+        font-size: 28px;
+        padding: 20px 36px;
+        min-width: 250px;
+      }
+
+      .hidden {
+        display: none !important;
+      }
+
+      .step-footer {
+        position: fixed;
+        left: 32px;
+        right: 32px;
+        bottom: 24px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 24px;
+        font-size: 12px;
+        color: #111;
+        z-index: 60;
+        padding: 0;
+        box-shadow: none;
+        background: none;
+      }
+
+      .step-footer img {
+        height: 26px;
+        width: auto;
+        background: transparent;
+      }
+
+      .footer-note {
+        margin: 0;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="share-container">
+      <div class="share-header">
+        <p class="share-brand">Nano Banana</p>
+        <h1 class="share-title">Share your image</h1>
+      </div>
+
+      <div class="share-image-container">
+        <img
+          id="photo"
+          alt="Edited result"
+        />
+      </div>
+
+      <div class="share-actions">
+        <button
+          id="downloadBtn"
+          class="primary"
+        >
+          Download
+        </button>
+        <button
+          id="copyLink"
+          class="secondary"
+        >
+          Copy link
+        </button>
+      </div>
+
+      <div class="share-links">
+        <a
+          id="linkedin"
+          class="button secondary"
+          target="_blank"
+          rel="noopener"
+        >
+          LinkedIn
+        </a>
+        <a
+          id="instagram"
+          class="button secondary"
+          target="_blank"
+          rel="noopener"
+        >
+          Instagram
+        </a>
+      </div>
+    </div>
+
+    <div class="step-footer">
+      <img
+        src="./assets/images/Gemini-logo.png"
+        alt="Gemini"
+        class="footer-logo"
+      />
+      <p class="footer-note">
+        Image files are stored temporarily for one (1) hour, after which they are permanently
+        deleted.
+      </p>
+    </div>
+
+    <script>
+      const params = new URLSearchParams(window.location.search);
+      const imageUrl = params.get('imageUrl');
+      const id = params.get('id') || 'photo';
+      const mime = params.get('mime') || 'image/webp';
+
+      const photoEl = document.getElementById('photo');
+      const downloadBtn = document.getElementById('downloadBtn');
+      const copyLinkBtn = document.getElementById('copyLink');
+      const linkedin = document.getElementById('linkedin');
+      const instagram = document.getElementById('instagram');
+
+      if (!imageUrl) {
+        photoEl.alt = 'Missing image';
+        photoEl.style.display = 'none';
+        document
+          .querySelector('.share-container')
+          .insertAdjacentHTML(
+            'beforeend',
+            '<p style="color:#f87171">Image URL was not provided. Please return to the kiosk and try again.</p>'
+          );
+      } else {
+        photoEl.src = imageUrl;
+        const ext = mime === 'image/png' ? 'png' : mime === 'image/jpeg' ? 'jpg' : 'webp';
+        const filename = `booth-${id}.${ext}`;
+
+        const encodedUrl = encodeURIComponent(imageUrl);
+        linkedin.href = `https://www.linkedin.com/sharing/share-offsite/?url=${encodedUrl}`;
+        instagram.addEventListener('click', async (e) => {
+          e.preventDefault();
+          try {
+            // Try Web Share API with the image file
+            if (navigator.share && navigator.canShare) {
+              const resp = await fetch(imageUrl, { mode: 'cors' });
+              if (!resp.ok) throw new Error('Fetch failed');
+              const blob = await resp.blob();
+              const file = new File([blob], filename, { type: mime });
+              
+              if (navigator.canShare({ files: [file] })) {
+                await navigator.share({
+                  title: 'My edited photo',
+                  text: 'Check out my photo from the Nano Banana booth!',
+                  files: [file],
+                });
+                return;
+              }
+            }
+            // Fallback: try to open Instagram app or copy URL
+            // Instagram doesn't have a direct share URL, so we'll use Web Share API
+            // If that fails, copy the URL
+            await navigator.clipboard.writeText(imageUrl);
+            alert('Image URL copied! You can now share it on Instagram.');
+          } catch (err) {
+            console.error('Instagram share failed', err);
+            try {
+              await navigator.clipboard.writeText(imageUrl);
+              alert('Image URL copied! You can now share it on Instagram.');
+            } catch {
+              alert('Please copy the image URL manually and share it on Instagram.');
+            }
+          }
+        });
+
+        copyLinkBtn.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(imageUrl);
+            copyLinkBtn.textContent = 'Copied!';
+            setTimeout(() => (copyLinkBtn.textContent = 'Copy link'), 2000);
+          } catch {
+            copyLinkBtn.textContent = 'Copy failed';
+            setTimeout(() => (copyLinkBtn.textContent = 'Copy link'), 2000);
+          }
+        });
+
+        downloadBtn.addEventListener('click', async () => {
+          downloadBtn.disabled = true;
+          const originalText = downloadBtn.textContent;
+          downloadBtn.textContent = 'Downloading…';
+          try {
+            const resp = await fetch(imageUrl, { mode: 'cors' });
+            if (!resp.ok) throw new Error('Fetch failed');
+            const blob = await resp.blob();
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            downloadBtn.textContent = 'Saved';
+          } catch (err) {
+            console.error('Download failed', err);
+            downloadBtn.textContent = 'Failed, try again';
+          } finally {
+            downloadBtn.disabled = false;
+            setTimeout(() => (downloadBtn.textContent = originalText), 2000);
+          }
+        });
+
+      }
+    </script>
+  </body>
+</html>

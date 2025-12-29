@@ -1,3 +1,6 @@
+// This file is for local development only. Do not use on Vercel.
+// Vercel uses api/index.js as the serverless function.
+
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
@@ -9,6 +12,13 @@ import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
 import { nanoid } from 'nanoid';
 import QRCode from 'qrcode';
+import sharp from 'sharp';
+
+// Exit early if running on Vercel (should not happen, but safety check)
+if (process.env.VERCEL) {
+  console.warn('server.js should not be executed on Vercel. Use api/index.js instead.');
+  process.exit(0);
+}
 
 dotenv.config();
 
@@ -21,7 +31,17 @@ app.set('trust proxy', true);
 // --- directories ---
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const SHARES_DIR = path.join(PUBLIC_DIR, 'shares');
-fs.mkdirSync(SHARES_DIR, { recursive: true });
+// Only create directory if it doesn't exist
+try {
+  fs.mkdirSync(SHARES_DIR, { recursive: true });
+} catch (e) {
+  // Directory might already exist, ignore error
+  if (e.code !== 'EEXIST') throw e;
+}
+
+// --- config ---
+const UPLOAD_TARGET = (process.env.UPLOAD_TARGET || 'filesystem').toLowerCase(); // filesystem | dataurl
+const MAX_UPLOAD_BYTES = 4.3 * 1024 * 1024;
 
 // --- helpers ---
 function getOrigin(req) {
@@ -29,19 +49,20 @@ function getOrigin(req) {
   const host = req.headers['x-forwarded-host'] || req.get('host');
   return `${proto}://${host}`;
 }
-function extFromMime(m) {
-  if (!m) return 'jpg';
-  if (m === 'image/jpeg' || m === 'image/jpg') return 'jpg';
-  if (m === 'image/png') return 'png';
-  if (m === 'image/webp') return 'webp';
-  return 'jpg';
-}
 function findExistingSharePath(id) {
-  for (const ext of ['jpg', 'png', 'webp']) {
+  for (const ext of ['webp', 'jpg', 'png']) {
     const p = path.join(SHARES_DIR, `${id}.${ext}`);
     if (fs.existsSync(p)) return { path: p, ext };
   }
   return null;
+}
+
+function getPathnameFromUrl(u) {
+  try {
+    return new URL(u).pathname.slice(1);
+  } catch {
+    return null;
+  }
 }
 
 // --- uploads ---
@@ -86,11 +107,54 @@ app.get('/diag', (_req, res) => {
     ok: true,
     hasKey: Boolean(process.env.GEMINI_API_KEY),
     model: 'gemini-2.5-flash-image',
+    uploadTarget: UPLOAD_TARGET,
   });
 });
 
 // --- Gemini client ---
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+/**
+ * Load the black 4x6 aspect ratio template image (blackbg.png)
+ */
+async function load4x6BlackImage() {
+  try {
+    const imagePath = path.join(PUBLIC_DIR, 'assets', 'images', 'blackbg.png');
+    const imageBuffer = await fsp.readFile(imagePath);
+    return imageBuffer;
+  } catch (err) {
+    console.error('Failed to load blackbg.png:', err);
+    throw new Error('Failed to load template image');
+  }
+}
+
+async function runGeminiEdit(fileMime, fileBuf, prompt, templateImageBuf = null) {
+  // Build contents array with prompt and images
+  const contents = [{ text: prompt }];
+
+  // Add user's image as image 1
+  contents.push({
+    inlineData: { mimeType: fileMime || 'image/jpeg', data: fileBuf.toString('base64') },
+  });
+
+  // Add template image (4x6 black) as image 2 if provided
+  if (templateImageBuf) {
+    contents.push({
+      inlineData: { mimeType: 'image/png', data: templateImageBuf.toString('base64') },
+    });
+  }
+
+  const resp = await ai.models.generateContent({
+    model: 'gemini-2.5-flash-image',
+    contents,
+    config: {
+      imageConfig: {
+        aspectRatio: '1:1', // Square (1:1) ratio
+      },
+    },
+  });
+  return extractImagePart(resp);
+}
 
 // --- helper: extract first image from a generateContent response ---
 function extractImagePart(resp) {
@@ -120,24 +184,15 @@ app.post('/api/edit', upload.single('image'), async (req, res) => {
     const prompt = String(req.body.prompt ?? '');
     if (!prompt) return res.status(400).json({ error: 'Missing prompt' });
 
-    const mimeType = req.file.mimetype || 'image/jpeg';
-    const base64 = req.file.buffer.toString('base64');
+    const fileSize = req.file.buffer.length;
+    if (fileSize > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Image too large' });
 
-    console.log(
-      `Editing image (${mimeType}, ${req.file.buffer.length} bytes) with prompt: "${prompt}"`
-    );
+    console.log(`Editing image (${req.file.mimetype}, ${fileSize} bytes) with prompt: "${prompt}"`);
 
-    const resp = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: [{ text: prompt }, { inlineData: { mimeType, data: base64 } }],
-    });
-
-    const img = extractImagePart(resp);
+    const img = await runGeminiEdit(req.file.mimetype, req.file.buffer, prompt);
     if (!img) {
-      const parts = resp?.candidates?.[0]?.content?.parts || [];
-      const textMsg = parts.find((p) => p?.text)?.text || 'No image returned by model';
-      console.warn('No image in response. Message:', textMsg);
-      return res.status(422).json({ error: textMsg });
+      console.warn('No image in response from Gemini');
+      return res.status(422).json({ error: 'Model returned no image' });
     }
 
     res
@@ -157,38 +212,79 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
     }
     if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
 
-    const prompt = String(req.body.prompt ?? '');
-    if (!prompt) return res.status(400).json({ error: 'Missing prompt' });
+    const originalPrompt = String(req.body.prompt ?? '');
+    if (!originalPrompt) return res.status(400).json({ error: 'Missing prompt' });
 
-    const mimeType = req.file.mimetype || 'image/jpeg';
-    const base64 = req.file.buffer.toString('base64');
+    const fileSize = req.file.buffer.length;
+    if (fileSize > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Image too large' });
 
-    console.log(`Editing (and sharing) image with prompt: "${prompt}"`);
+    // Combine original prompt with aspect ratio instruction and quality request
+    const prompt = `${originalPrompt}\n\nRedraw the content from image 1 in a 1:1 square aspect ratio. Adjust image 1 by adding content as needed to fill a perfect square (1:1) format. Make sure no blank areas are left. Generate a high-quality, detailed, sharp focus image suitable for 300dpi printing.`;
 
-    const resp = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: [{ text: prompt }, { inlineData: { mimeType, data: base64 } }],
-    });
+    console.log(`Editing (and sharing) image with prompt: "${originalPrompt}"`);
 
-    const img = extractImagePart(resp);
+    const img = await runGeminiEdit(req.file.mimetype, req.file.buffer, prompt, null);
     if (!img) {
-      const parts = resp?.candidates?.[0]?.content?.parts || [];
-      const textMsg = parts.find((p) => p?.text)?.text || 'No image returned by model';
-      return res.status(422).json({ error: textMsg });
+      console.warn('No image returned by Gemini');
+      return res.status(422).json({ error: 'Model returned no image' });
     }
 
     const id = nanoid(10);
-    const ext = extFromMime(img.mime);
-    const filePath = path.join(SHARES_DIR, `${id}.${ext}`);
-    await fsp.writeFile(filePath, img.buffer);
-
     const origin = getOrigin(req);
-    const imageUrl = `${origin}/shares/${id}.${ext}`;
-    const shareUrl = `${origin}/share/${id}`;
+
+    let imageUrl;
+    let outMime = img.mime;
+    let outBuffer = img.buffer;
+    let storedPath = null;
+
+    if (UPLOAD_TARGET === 'dataurl') {
+      imageUrl = `data:${outMime};base64,${outBuffer.toString('base64')}`;
+      console.log('Returning data URL image (UPLOAD_TARGET=dataurl)');
+    } else {
+      // Convert to high-quality WebP for 300dpi printing
+      // Using 1800x1800 (1:1) for square format - excellent for 300dpi printing (6in x 6in at 300dpi)
+      // First get metadata to verify input size
+      const metadata = await sharp(outBuffer).metadata();
+      console.log(`Resizing image from ${metadata.width}x${metadata.height} to 1800x1800`);
+
+      const webpBuffer = await sharp(outBuffer)
+        .rotate()
+        .resize(1800, 1800, {
+          fit: 'fill', // Force exact 1800x1800 dimensions (no cropping, upscales if needed)
+          withoutEnlargement: false, // Allow upscaling if needed
+        })
+        .toFormat('webp', { quality: 95 }) // High quality for printing
+        .toBuffer();
+
+      // Verify output size
+      const outputMetadata = await sharp(webpBuffer).metadata();
+      console.log(`Resized image to ${outputMetadata.width}x${outputMetadata.height}`);
+      outBuffer = webpBuffer;
+      outMime = 'image/webp';
+      const filename = `${id}.webp`;
+      const filePath = path.join(SHARES_DIR, filename);
+      await fsp.writeFile(filePath, outBuffer);
+      storedPath = `shares/${filename}`;
+      imageUrl = `${origin}/${storedPath}`;
+    }
+
+    const shareUrl = `${origin}/share.html?imageUrl=${encodeURIComponent(
+      imageUrl
+    )}&id=${id}&mime=${encodeURIComponent(outMime)}`;
 
     const qrDataUrl = await QRCode.toDataURL(shareUrl, { margin: 1, scale: 6 });
+    const resolvedPath = storedPath || getPathnameFromUrl(imageUrl);
 
-    res.json({ ok: true, id, imageUrl, shareUrl, qrDataUrl, mime: img.mime });
+    res.json({
+      ok: true,
+      id,
+      mode: UPLOAD_TARGET,
+      mime: outMime,
+      imageUrl,
+      path: resolvedPath,
+      shareUrl,
+      qrDataUrl,
+    });
   } catch (err) {
     console.error('edit-and-share failed:', err);
     res.status(500).json({ error: 'Gemini request failed', detail: String(err?.message || err) });
