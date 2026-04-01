@@ -269,7 +269,10 @@ Maintain accurate facial likeness and identity. No added text or signatures."
           <h1 class="share-title">Share your image</h1>
         </div>
 
-        <div class="share-qr-container">
+        <div
+          id="shareQrWrapper"
+          class="share-qr-container"
+        >
           <img
             id="shareQRCode"
             alt="QR Code"
@@ -277,7 +280,72 @@ Maintain accurate facial likeness and identity. No added text or signatures."
           />
         </div>
 
-        <p class="share-instruction">Scan the QR code to view and share your image</p>
+        <p
+          id="shareInstruction"
+          class="share-instruction"
+        >
+          Scan the QR code to view and share your image
+        </p>
+
+        <div
+          id="shareSocial"
+          class="share-social hidden"
+        >
+          <button
+            id="btnNativeShare"
+            class="pill-btn"
+          >
+            Share via apps
+          </button>
+          <div class="share-social-grid">
+            <a
+              id="shareWhatsapp"
+              class="social-share-btn"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              WhatsApp
+            </a>
+            <a
+              id="shareFacebook"
+              class="social-share-btn"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Facebook
+            </a>
+            <a
+              id="shareX"
+              class="social-share-btn"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              X
+            </a>
+            <a
+              id="shareLinkedIn"
+              class="social-share-btn"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              LinkedIn
+            </a>
+            <a
+              id="shareTelegram"
+              class="social-share-btn"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Telegram
+            </a>
+            <a
+              id="shareEmail"
+              class="social-share-btn"
+            >
+              Email
+            </a>
+          </div>
+        </div>
 
         <button
           id="btnBackFromShare"
@@ -342,6 +410,7 @@ Maintain accurate facial likeness and identity. No added text or signatures."
         <div class="camera-simple-headline">
           <p class="camera-brand">Nano Banana</p>
           <h2 class="camera-title">Take a picture</h2>
+          <p class="mobile-mode-hint hidden">Mobile mode: use your phone camera directly.</p>
         </div>
 
         <div class="wrap camera-wrap">
@@ -394,6 +463,13 @@ Maintain accurate facial likeness and identity. No added text or signatures."
               >
                 Retake
               </button>
+              <input
+                id="nativeCaptureInput"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                class="hidden"
+              />
             </div>
 
             <p

@@ -31,9 +31,11 @@ app.set('trust proxy', true);
 // --- directories ---
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const SHARES_DIR = path.join(PUBLIC_DIR, 'shares');
+const DEBUG_DIR = path.join(SHARES_DIR, 'debug');
 // Only create directory if it doesn't exist
 try {
   fs.mkdirSync(SHARES_DIR, { recursive: true });
+  fs.mkdirSync(DEBUG_DIR, { recursive: true });
 } catch (e) {
   // Directory might already exist, ignore error
   if (e.code !== 'EEXIST') throw e;
@@ -42,6 +44,31 @@ try {
 // --- config ---
 const UPLOAD_TARGET = (process.env.UPLOAD_TARGET || 'filesystem').toLowerCase(); // filesystem | dataurl
 const MAX_UPLOAD_BYTES = 4.3 * 1024 * 1024;
+const COMPANY_IDS = Object.freeze({
+  DEFAULT: 'default',
+  BOLIDEN: 'boliden',
+});
+const SQUARE_QUALITY_SUFFIX =
+  '\n\nRedraw the content from image 1 in a 1:1 square aspect ratio. Adjust image 1 by adding content as needed to fill a perfect square (1:1) format. Make sure no blank areas are left. Generate a high-quality, detailed, sharp focus image suitable for 300dpi printing.';
+
+const BOLIDEN_SCENE_LIBRARY = Object.freeze({
+  'underground-drill': {
+    imagePath: ['assets', 'images', 'boliden', 'drilling-at-zinkgruvan.jpeg'],
+    ppeHint: 'Hard hat with mounted lamp, reflective yellow safety jacket, work gloves.',
+  },
+  'mine-inspection': {
+    imagePath: ['assets', 'images', 'boliden', 'drilling-at-zinkgruvan.jpeg'],
+    ppeHint: 'Safety helmet, reflective vest, protective eyewear, steel-toe workwear.',
+  },
+  'tunnel-shift': {
+    imagePath: ['assets', 'images', 'boliden', 'drilling-at-zinkgruvan.jpeg'],
+    ppeHint: 'Helmet, high-visibility outerwear, utility belt, rugged boots.',
+  },
+  'site-overview': {
+    imagePath: ['assets', 'images', 'boliden', 'drilling-at-zinkgruvan.jpeg'],
+    ppeHint: 'Industrial PPE matching workers in the scene, keep high-visibility details.',
+  },
+});
 
 // --- helpers ---
 function getOrigin(req) {
@@ -63,6 +90,52 @@ function getPathnameFromUrl(u) {
   } catch {
     return null;
   }
+}
+
+function extFromMime(mime) {
+  if (mime === 'image/webp') return 'webp';
+  if (mime === 'image/png') return 'png';
+  return 'jpg';
+}
+
+function resolveCompany(rawCompany) {
+  return rawCompany === COMPANY_IDS.BOLIDEN ? COMPANY_IDS.BOLIDEN : COMPANY_IDS.DEFAULT;
+}
+
+async function loadPublicImageSafe(pathParts) {
+  try {
+    const imagePath = path.join(PUBLIC_DIR, ...pathParts);
+    return await fsp.readFile(imagePath);
+  } catch (err) {
+    console.warn('Scene image missing:', err?.message);
+    return null;
+  }
+}
+
+function resolveGenerationStrategy({ company, originalPrompt, sceneId }) {
+  if (company === COMPANY_IDS.BOLIDEN) {
+    const scene = sceneId ? BOLIDEN_SCENE_LIBRARY[sceneId] : null;
+    if (scene) {
+      const prompt = [
+        'Use image 1 as the background scene and image 2 as the person to insert.',
+        'Keep image 1 composition and people unchanged; treat it as the base canvas.',
+        'Add the person from image 2 as a separate, full-body subject placed naturally into image 1 with realistic scale, perspective, and lighting.',
+        'Preserve the person identity and face from image 2 on the inserted subject.',
+        `Match PPE and outfit to the work context. ${scene.ppeHint}`,
+        'Keep existing people already present in image 1 unchanged.',
+        'Add only the person from image 2 as the new inserted subject.',
+        'The inserted person must be clearly visible in the final image.',
+        'Do not replace, edit, or swap any existing face or head in image 1.',
+        'The original worker already in image 1 must remain identical, including face and body, and stay fully visible.',
+        'No face swap. No head replacement.',
+        'No text or watermark.',
+        'Output should be photorealistic and consistent with the safety culture in the scene.',
+        SQUARE_QUALITY_SUFFIX.trim(),
+      ].join(' ');
+      return { prompt, scene };
+    }
+  }
+  return { prompt: `${originalPrompt}${SQUARE_QUALITY_SUFFIX}`, scene: null };
 }
 
 // --- uploads ---
@@ -128,7 +201,7 @@ async function load4x6BlackImage() {
   }
 }
 
-async function runGeminiEdit(fileMime, fileBuf, prompt, templateImageBuf = null) {
+async function runGeminiEdit(fileMime, fileBuf, prompt, referenceImages = []) {
   // Build contents array with prompt and images
   const contents = [{ text: prompt }];
 
@@ -137,10 +210,11 @@ async function runGeminiEdit(fileMime, fileBuf, prompt, templateImageBuf = null)
     inlineData: { mimeType: fileMime || 'image/jpeg', data: fileBuf.toString('base64') },
   });
 
-  // Add template image (4x6 black) as image 2 if provided
-  if (templateImageBuf) {
+  // Add reference images (scene/background) if provided
+  for (const ref of referenceImages) {
+    if (!ref?.buffer) continue;
     contents.push({
-      inlineData: { mimeType: 'image/png', data: templateImageBuf.toString('base64') },
+      inlineData: { mimeType: ref.mime || 'image/jpeg', data: ref.buffer.toString('base64') },
     });
   }
 
@@ -212,18 +286,38 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
     }
     if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
 
+    const clientMode = req.body.mode === 'mobile' ? 'mobile' : 'booth';
+    const company = resolveCompany(String(req.body.company ?? ''));
+    const sceneId = String(req.body.sceneId ?? '').trim() || null;
+
     const originalPrompt = String(req.body.prompt ?? '');
     if (!originalPrompt) return res.status(400).json({ error: 'Missing prompt' });
 
     const fileSize = req.file.buffer.length;
     if (fileSize > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Image too large' });
 
-    // Combine original prompt with aspect ratio instruction and quality request
-    const prompt = `${originalPrompt}\n\nRedraw the content from image 1 in a 1:1 square aspect ratio. Adjust image 1 by adding content as needed to fill a perfect square (1:1) format. Make sure no blank areas are left. Generate a high-quality, detailed, sharp focus image suitable for 300dpi printing.`;
+    const strategy = resolveGenerationStrategy({ company, originalPrompt, sceneId });
+    const sceneImageBuffer = strategy.scene
+      ? await loadPublicImageSafe(strategy.scene.imagePath)
+      : null;
+    const referenceImages = [];
+    if (sceneImageBuffer) {
+      referenceImages.push({ mime: 'image/jpeg', buffer: sceneImageBuffer });
+    }
+    if (strategy.scene && !sceneImageBuffer) {
+      console.warn(`Boliden scene image missing for sceneId=${sceneId}, falling back to default flow`);
+    }
+    const prompt = sceneImageBuffer ? strategy.prompt : `${originalPrompt}${SQUARE_QUALITY_SUFFIX}`;
 
     console.log(`Editing (and sharing) image with prompt: "${originalPrompt}"`);
 
-    const img = await runGeminiEdit(req.file.mimetype, req.file.buffer, prompt, null);
+    const useSceneAsBase = Boolean(sceneImageBuffer);
+    const primaryMime = useSceneAsBase ? 'image/jpeg' : req.file.mimetype;
+    const primaryBuffer = useSceneAsBase ? sceneImageBuffer : req.file.buffer;
+    const secondaryImages = useSceneAsBase
+      ? [{ mime: req.file.mimetype || 'image/jpeg', buffer: req.file.buffer }]
+      : referenceImages;
+    const img = await runGeminiEdit(primaryMime, primaryBuffer, prompt, secondaryImages);
     if (!img) {
       console.warn('No image returned by Gemini');
       return res.status(422).json({ error: 'Model returned no image' });
@@ -231,6 +325,13 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
 
     const id = nanoid(10);
     const origin = getOrigin(req);
+    const rawExt = extFromMime(img.mime);
+    const rawFilename = `${id}-gemini-raw.${rawExt}`;
+    const rawFilePath = path.join(DEBUG_DIR, rawFilename);
+    await fsp.writeFile(rawFilePath, img.buffer);
+    const rawStoredPath = `shares/debug/${rawFilename}`;
+    const rawImageUrl = `${origin}/${rawStoredPath}`;
+    console.log(`Saved raw Gemini output to ${rawStoredPath}`);
 
     let imageUrl;
     let outMime = img.mime;
@@ -241,27 +342,34 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
       imageUrl = `data:${outMime};base64,${outBuffer.toString('base64')}`;
       console.log('Returning data URL image (UPLOAD_TARGET=dataurl)');
     } else {
-      // Convert to high-quality WebP for 300dpi printing
-      // Using 1800x1800 (1:1) for square format - excellent for 300dpi printing (6in x 6in at 300dpi)
-      // First get metadata to verify input size
-      const metadata = await sharp(outBuffer).metadata();
-      console.log(`Resizing image from ${metadata.width}x${metadata.height} to 1800x1800`);
+      let ext = extFromMime(outMime);
 
-      const webpBuffer = await sharp(outBuffer)
-        .rotate()
-        .resize(1800, 1800, {
-          fit: 'fill', // Force exact 1800x1800 dimensions (no cropping, upscales if needed)
-          withoutEnlargement: false, // Allow upscaling if needed
-        })
-        .toFormat('webp', { quality: 95 }) // High quality for printing
-        .toBuffer();
+      if (clientMode !== 'mobile') {
+        // Booth flow: normalize to print-ready 1800x1800 WebP.
+        const metadata = await sharp(outBuffer).metadata();
+        console.log(`Resizing image from ${metadata.width}x${metadata.height} to 1800x1800`);
 
-      // Verify output size
-      const outputMetadata = await sharp(webpBuffer).metadata();
-      console.log(`Resized image to ${outputMetadata.width}x${outputMetadata.height}`);
-      outBuffer = webpBuffer;
-      outMime = 'image/webp';
-      const filename = `${id}.webp`;
+        const webpBuffer = await sharp(outBuffer)
+          .rotate()
+          .resize(1800, 1800, {
+            fit: 'fill',
+            withoutEnlargement: false,
+          })
+          .toFormat('webp', { quality: 95 })
+          .toBuffer();
+
+        const outputMetadata = await sharp(webpBuffer).metadata();
+        console.log(`Resized image to ${outputMetadata.width}x${outputMetadata.height}`);
+        outBuffer = webpBuffer;
+        outMime = 'image/webp';
+        ext = 'webp';
+      } else {
+        console.log(
+          `Skipping resize in mobile mode; preserving generated ${outMime} (${outBuffer.length} bytes)`
+        );
+      }
+
+      const filename = `${id}.${ext}`;
       const filePath = path.join(SHARES_DIR, filename);
       await fsp.writeFile(filePath, outBuffer);
       storedPath = `shares/${filename}`;
@@ -279,9 +387,14 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
       ok: true,
       id,
       mode: UPLOAD_TARGET,
+      clientMode,
+      company,
+      sceneId,
       mime: outMime,
       imageUrl,
       path: resolvedPath,
+      debugRawImageUrl: rawImageUrl,
+      debugRawPath: rawStoredPath,
       shareUrl,
       qrDataUrl,
     });

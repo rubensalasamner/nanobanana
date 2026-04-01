@@ -745,6 +745,44 @@ img {
   display: inline-block;
 }
 
+.share-social {
+  width: min(560px, 92vw);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.share-social-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.social-share-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  border-radius: 16px;
+  border: 1px solid #d0d7e2;
+  background: #fff;
+  color: #1f2937;
+  text-decoration: none;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.social-share-btn:active {
+  transform: scale(0.98);
+}
+
+body[data-mode='mobile'] .share-social-grid {
+  grid-template-columns: 1fr;
+}
+
 /* Wizard Steps */
 .wizard-step {
   position: fixed;
@@ -867,4 +905,62 @@ img {
 #step-result,
 #step-share {
   background: #fff;
+}
+
+body[data-mode='mobile'] .mobile-mode-hint {
+  display: block !important;
+  margin: 10px 0 0;
+  color: #5f6368;
+  font-size: 16px;
+}
+
+body[data-mode='mobile'] .step-footer {
+  position: static;
+  padding: 12px 16px 24px;
+}
+
+body[data-mode='mobile'] .camera-container,
+body[data-mode='mobile'] .style-container,
+body[data-mode='mobile'] .result-container,
+body[data-mode='mobile'] .share-container {
+  height: auto;
+  min-height: 100vh;
+  justify-content: center;
+  padding-bottom: 24px;
+}
+
+body[data-mode='mobile'] .camera-title,
+body[data-mode='mobile'] .style-title,
+body[data-mode='mobile'] .result-title,
+body[data-mode='mobile'] .share-title {
+  font-size: clamp(28px, 8vw, 36px);
+}
+
+body[data-mode='mobile'] .camera-actions {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+body[data-mode='mobile'] .camera-actions #btnSnap,
+body[data-mode='mobile'] .camera-actions #btnRetake,
+body[data-mode='mobile'] .result-actions .pill-btn,
+body[data-mode='mobile'] .result-container #btnRestart {
+  width: min(360px, 90vw);
+  min-width: 0;
+  font-size: 22px;
+  padding: 16px 24px;
+}
+
+body[data-mode='mobile'] .style-grid {
+  width: min(420px, 92vw);
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+body[data-mode='mobile'] .style-card {
+  height: auto;
+  min-height: 96px;
+  font-size: 18px;
+  padding: 20px 14px;
+  border-radius: 18px;
 }
