@@ -1,12 +1,20 @@
 // api/index.js
-import Busboy from 'busboy';
-import { GoogleGenAI } from '@google/genai';
-import QRCode from 'qrcode';
-import { nanoid } from 'nanoid';
-import { put as blobPut, list as blobList, del as blobDel } from './storage.js';
-import sharp from 'sharp';
 import { readFile } from 'fs/promises';
 import { join } from 'path';
+
+import { GoogleGenAI } from '@google/genai';
+import Busboy from 'busboy';
+import { nanoid } from 'nanoid';
+import QRCode from 'qrcode';
+import sharp from 'sharp';
+
+import {
+  BOLIDEN_SCENE_LIBRARY,
+  COMPANY_IDS,
+  resolveCompany as resolveCompanyId,
+} from '../public/shared/company-scenes.js';
+
+import { put as blobPut, list as blobList, del as blobDel } from './storage.js';
 
 export const config = {
   runtime: 'nodejs',
@@ -17,31 +25,8 @@ export const config = {
 const UPLOAD_TARGET = (process.env.UPLOAD_TARGET || 'blob').toLowerCase(); // 'blob' | 'dataurl'
 const MAX_UPLOAD_BYTES = 4.3 * 1024 * 1024; // guard for serverless limits
 const ONE_HOUR_MS = 60 * 60 * 1000;
-const COMPANY_IDS = Object.freeze({
-  DEFAULT: 'default',
-  BOLIDEN: 'boliden',
-});
 const SQUARE_QUALITY_SUFFIX =
   '\n\nRedraw the content from image 1 in a 1:1 square aspect ratio. Adjust image 1 by adding content as needed to fill a perfect square (1:1) format. Make sure no blank areas are left. Generate a high-quality, detailed, sharp focus image suitable for 300dpi printing.';
-
-const BOLIDEN_SCENE_LIBRARY = Object.freeze({
-  'underground-drill': {
-    imagePath: 'assets/images/boliden/underground-drill.jpg',
-    ppeHint: 'Hard hat with mounted lamp, reflective yellow safety jacket, work gloves.',
-  },
-  'mine-inspection': {
-    imagePath: 'assets/images/boliden/mine-inspection.jpg',
-    ppeHint: 'Safety helmet, reflective vest, protective eyewear, steel-toe workwear.',
-  },
-  'tunnel-shift': {
-    imagePath: 'assets/images/boliden/tunnel-shift.jpg',
-    ppeHint: 'Helmet, high-visibility outerwear, utility belt, rugged boots.',
-  },
-  'site-overview': {
-    imagePath: 'assets/images/boliden/site-overview.jpg',
-    ppeHint: 'Industrial PPE matching workers in the scene, keep high-visibility details.',
-  },
-});
 
 /** ===== Logging ===== */
 function log(reqId, level, msg, meta = {}) {
@@ -140,10 +125,6 @@ async function loadPublicImageSafe(relativePath, reqId) {
   }
 }
 
-function resolveCompany(rawCompany) {
-  return rawCompany === COMPANY_IDS.BOLIDEN ? COMPANY_IDS.BOLIDEN : COMPANY_IDS.DEFAULT;
-}
-
 function resolveGenerationStrategy({ company, originalPrompt, sceneId }) {
   if (company === COMPANY_IDS.BOLIDEN) {
     const scene = sceneId ? BOLIDEN_SCENE_LIBRARY[sceneId] : null;
@@ -157,6 +138,7 @@ function resolveGenerationStrategy({ company, originalPrompt, sceneId }) {
         'Keep existing people already present in image 1 unchanged.',
         'Add only the person from image 2 as the new inserted subject.',
         'The inserted person must be clearly visible in the final image.',
+        'The inserted person should face the viewer/camera, with head and eyes oriented toward the viewer.',
         'Do not replace, edit, or swap any existing face or head in image 1.',
         'No face swap. No head replacement.',
         'No text or watermark.',
@@ -264,7 +246,7 @@ async function handleEditAndShare(req, res, reqId) {
   if (!fileBuf) return res.status(400).json({ error: "No image uploaded (field 'image')" });
   if (fileSize > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Image too large' });
   const clientMode = fields.mode === 'mobile' ? 'mobile' : 'booth';
-  const company = resolveCompany(String(fields.company ?? ''));
+  const company = resolveCompanyId(String(fields.company ?? ''));
   const sceneId = String(fields.sceneId ?? '').trim() || null;
 
   const originalPrompt = String(fields.prompt ?? '');

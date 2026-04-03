@@ -1,3 +1,9 @@
+import {
+  BOLIDEN_SCENES,
+  COMPANY_IDS,
+  resolveCompany as resolveCompanyId,
+} from './shared/company-scenes.js';
+
 // ----- DOM -----
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
@@ -203,42 +209,9 @@ const APP_MODES = Object.freeze({
   BOOTH: 'booth',
   MOBILE: 'mobile',
 });
-const COMPANY_IDS = Object.freeze({
-  DEFAULT: 'default',
-  BOLIDEN: 'boliden',
-});
-
-const BOLIDEN_SCENES = Object.freeze([
-  {
-    id: 'underground-drill',
-    label: 'Underground drilling',
-    ppeHint: 'Hard hat with mounted lamp, reflective yellow safety jacket, work gloves.',
-  },
-  {
-    id: 'mine-inspection',
-    label: 'Mine inspection',
-    ppeHint: 'Safety helmet, reflective vest, protective eyewear, steel-toe workwear.',
-  },
-  {
-    id: 'tunnel-shift',
-    label: 'Tunnel shift',
-    ppeHint: 'Helmet, high-visibility outerwear, utility belt, rugged boots.',
-  },
-  {
-    id: 'site-overview',
-    label: 'Site overview',
-    ppeHint: 'Industrial PPE matching workers in the scene, keep high-visibility details.',
-  },
-]);
-
 function resolveAppMode() {
   const mode = new URLSearchParams(window.location.search).get('mode');
   return mode === APP_MODES.MOBILE ? APP_MODES.MOBILE : APP_MODES.BOOTH;
-}
-
-function resolveCompany() {
-  const company = new URLSearchParams(window.location.search).get('company');
-  return company === COMPANY_IDS.BOLIDEN ? COMPANY_IDS.BOLIDEN : COMPANY_IDS.DEFAULT;
 }
 
 function getStyleTitleDefaultText() {
@@ -294,7 +267,7 @@ const MODE_STRATEGIES = Object.freeze({
 });
 
 const appMode = resolveAppMode();
-const companyId = resolveCompany();
+const companyId = resolveCompanyId(new URLSearchParams(window.location.search).get('company'));
 const modeStrategy = MODE_STRATEGIES[appMode];
 idleTimeoutMs = modeStrategy.idleTimeoutMs;
 const useNativeMobileCapture = shouldUseNativeMobileCapture();
@@ -309,6 +282,7 @@ function buildBolidenPrompt(scene) {
     'Keep existing people already present in image 2 unchanged.',
     'Add only the person from image 1 as the new inserted subject.',
     'The inserted person from image 1 must be clearly visible in the final image.',
+    'The inserted person should face the viewer/camera, with head and eyes oriented toward the viewer.',
     'Do not replace, edit, or swap any existing face or head in image 2.',
     'No face swap. No head replacement.',
     'No text or watermark.',

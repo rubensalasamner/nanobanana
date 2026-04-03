@@ -14,6 +14,12 @@ import { nanoid } from 'nanoid';
 import QRCode from 'qrcode';
 import sharp from 'sharp';
 
+import {
+  BOLIDEN_SCENE_LIBRARY,
+  COMPANY_IDS,
+  resolveCompany as resolveCompanyId,
+} from './public/shared/company-scenes.js';
+
 // Exit early if running on Vercel (should not happen, but safety check)
 if (process.env.VERCEL) {
   console.warn('server.js should not be executed on Vercel. Use api/index.js instead.');
@@ -44,31 +50,8 @@ try {
 // --- config ---
 const UPLOAD_TARGET = (process.env.UPLOAD_TARGET || 'filesystem').toLowerCase(); // filesystem | dataurl
 const MAX_UPLOAD_BYTES = 4.3 * 1024 * 1024;
-const COMPANY_IDS = Object.freeze({
-  DEFAULT: 'default',
-  BOLIDEN: 'boliden',
-});
 const SQUARE_QUALITY_SUFFIX =
   '\n\nRedraw the content from image 1 in a 1:1 square aspect ratio. Adjust image 1 by adding content as needed to fill a perfect square (1:1) format. Make sure no blank areas are left. Generate a high-quality, detailed, sharp focus image suitable for 300dpi printing.';
-
-const BOLIDEN_SCENE_LIBRARY = Object.freeze({
-  'underground-drill': {
-    imagePath: ['assets', 'images', 'boliden', 'drilling-at-zinkgruvan.jpeg'],
-    ppeHint: 'Hard hat with mounted lamp, reflective yellow safety jacket, work gloves.',
-  },
-  'mine-inspection': {
-    imagePath: ['assets', 'images', 'boliden', 'drilling-at-zinkgruvan.jpeg'],
-    ppeHint: 'Safety helmet, reflective vest, protective eyewear, steel-toe workwear.',
-  },
-  'tunnel-shift': {
-    imagePath: ['assets', 'images', 'boliden', 'drilling-at-zinkgruvan.jpeg'],
-    ppeHint: 'Helmet, high-visibility outerwear, utility belt, rugged boots.',
-  },
-  'site-overview': {
-    imagePath: ['assets', 'images', 'boliden', 'drilling-at-zinkgruvan.jpeg'],
-    ppeHint: 'Industrial PPE matching workers in the scene, keep high-visibility details.',
-  },
-});
 
 // --- helpers ---
 function getOrigin(req) {
@@ -98,13 +81,9 @@ function extFromMime(mime) {
   return 'jpg';
 }
 
-function resolveCompany(rawCompany) {
-  return rawCompany === COMPANY_IDS.BOLIDEN ? COMPANY_IDS.BOLIDEN : COMPANY_IDS.DEFAULT;
-}
-
-async function loadPublicImageSafe(pathParts) {
+async function loadPublicImageSafe(relativePath) {
   try {
-    const imagePath = path.join(PUBLIC_DIR, ...pathParts);
+    const imagePath = path.join(PUBLIC_DIR, ...relativePath.split('/'));
     return await fsp.readFile(imagePath);
   } catch (err) {
     console.warn('Scene image missing:', err?.message);
@@ -125,6 +104,7 @@ function resolveGenerationStrategy({ company, originalPrompt, sceneId }) {
         'Keep existing people already present in image 1 unchanged.',
         'Add only the person from image 2 as the new inserted subject.',
         'The inserted person must be clearly visible in the final image.',
+        'The inserted person should face the viewer/camera, with head and eyes oriented toward the viewer.',
         'Do not replace, edit, or swap any existing face or head in image 1.',
         'The original worker already in image 1 must remain identical, including face and body, and stay fully visible.',
         'No face swap. No head replacement.',
@@ -287,7 +267,7 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
 
     const clientMode = req.body.mode === 'mobile' ? 'mobile' : 'booth';
-    const company = resolveCompany(String(req.body.company ?? ''));
+    const company = resolveCompanyId(String(req.body.company ?? ''));
     const sceneId = String(req.body.sceneId ?? '').trim() || null;
 
     const originalPrompt = String(req.body.prompt ?? '');
