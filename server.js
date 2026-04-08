@@ -96,26 +96,42 @@ function resolveGenerationStrategy({ company, originalPrompt, sceneId }) {
     const scene = sceneId ? BOLIDEN_SCENE_LIBRARY[sceneId] : null;
     if (scene) {
       const prompt = [
-        'Use image 1 as the background scene and image 2 as the person to insert.',
-        'Keep image 1 composition and people unchanged; treat it as the base canvas.',
+        'Use image 1 as the background scene (base canvas) and image 2 as the person to insert.',
+        'You MUST preserve image 1 exactly: do not redraw or regenerate the background. Keep image 1 pixels unchanged except for inserting the person.',
         'Add the person from image 2 as a separate, full-body subject placed naturally into image 1 with realistic scale, perspective, and lighting.',
         'Preserve the person identity and face from image 2 on the inserted subject.',
+        scene.promptHint ? scene.promptHint : '',
         `Match PPE and outfit to the work context. ${scene.ppeHint}`,
         'Keep existing people already present in image 1 unchanged.',
         'Add only the person from image 2 as the new inserted subject.',
         'The inserted person must be clearly visible in the final image.',
         'The inserted person should face the viewer/camera, with head and eyes oriented toward the viewer.',
         'Do not replace, edit, or swap any existing face or head in image 1.',
-        'The original worker already in image 1 must remain identical, including face and body, and stay fully visible.',
         'No face swap. No head replacement.',
         'No text or watermark.',
         'Output should be photorealistic and consistent with the safety culture in the scene.',
         SQUARE_QUALITY_SUFFIX.trim(),
       ].join(' ');
-      return { prompt, scene };
+
+      const fallbackPrompt = [
+        'Use image 1 as the person source.',
+        `Place the person into the Boliden work context: "${scene.label}".`,
+        scene.promptHint ? scene.promptHint : '',
+        `Match PPE and outfit to the work context. ${scene.ppeHint}`,
+        'Generate a photorealistic industrial background consistent with the scene context.',
+        'Preserve the person identity and face from image 1.',
+        'Do not replace, edit, or swap any existing face or head in image 1.',
+        'No face swap. No head replacement.',
+        'No text or watermark.',
+        'Output should be photorealistic and consistent with the safety culture in the scene.',
+        SQUARE_QUALITY_SUFFIX.trim(),
+      ].join(' ');
+
+      return { prompt, fallbackPrompt, scene };
     }
   }
-  return { prompt: `${originalPrompt}${SQUARE_QUALITY_SUFFIX}`, scene: null };
+  const prompt = `${originalPrompt}${SQUARE_QUALITY_SUFFIX}`;
+  return { prompt, fallbackPrompt: prompt, scene: null };
 }
 
 // --- uploads ---
@@ -202,6 +218,8 @@ async function runGeminiEdit(fileMime, fileBuf, prompt, referenceImages = []) {
     model: 'gemini-2.5-flash-image',
     contents,
     config: {
+      temperature: 0.2,
+      seed: 42,
       imageConfig: {
         aspectRatio: '1:1', // Square (1:1) ratio
       },
@@ -271,7 +289,12 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
     const sceneId = String(req.body.sceneId ?? '').trim() || null;
 
     const originalPrompt = String(req.body.prompt ?? '');
-    if (!originalPrompt) return res.status(400).json({ error: 'Missing prompt' });
+    if (company !== COMPANY_IDS.BOLIDEN && !originalPrompt) {
+      return res.status(400).json({ error: 'Missing prompt' });
+    }
+    if (company === COMPANY_IDS.BOLIDEN && !sceneId) {
+      return res.status(400).json({ error: 'Missing sceneId for boliden' });
+    }
 
     const fileSize = req.file.buffer.length;
     if (fileSize > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Image too large' });
@@ -287,7 +310,7 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
     if (strategy.scene && !sceneImageBuffer) {
       console.warn(`Boliden scene image missing for sceneId=${sceneId}, falling back to default flow`);
     }
-    const prompt = sceneImageBuffer ? strategy.prompt : `${originalPrompt}${SQUARE_QUALITY_SUFFIX}`;
+    const prompt = sceneImageBuffer ? strategy.prompt : strategy.fallbackPrompt;
 
     console.log(`Editing (and sharing) image with prompt: "${originalPrompt}"`);
 

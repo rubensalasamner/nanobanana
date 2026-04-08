@@ -21,6 +21,7 @@ const btnApply = document.getElementById('btnApply');
 const btnDownload = document.getElementById('btnDownload');
 const btnPrint = document.getElementById('btnPrint');
 const grid = document.getElementById('presetGrid');
+const DEFAULT_GRID_HTML = grid?.innerHTML ?? '';
 
 const qrImg = document.getElementById('qr');
 const btnCopy = document.getElementById('btnCopy');
@@ -289,12 +290,32 @@ function buildBolidenPrompt(scene) {
   ].join(' ');
 }
 
+function getPublicAssetUrl(relativePath) {
+  // `relativePath` is like: assets/images/boliden/mining-raw.jpg
+  return new URL(relativePath, window.location.origin).toString();
+}
+
+function checkImageUrlExists(url) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(true);
+    img.onerror = () => resolve(false);
+    img.src = url;
+  });
+}
+
 function applyCompanyExperience() {
   document.body.dataset.company = companyId;
 
-  if (companyId !== COMPANY_IDS.BOLIDEN || !grid) return;
+  if (!grid) return;
 
-  const cards = Array.from(grid.querySelectorAll('[data-prompt]'));
+  if (companyId !== COMPANY_IDS.BOLIDEN) {
+    if (DEFAULT_GRID_HTML && grid.innerHTML !== DEFAULT_GRID_HTML) {
+      grid.innerHTML = DEFAULT_GRID_HTML;
+    }
+    return;
+  }
+
   const brandEls = document.querySelectorAll('.camera-brand, .share-brand');
 
   brandEls.forEach((el) => {
@@ -304,20 +325,26 @@ function applyCompanyExperience() {
   if (styleTitle) styleTitle.textContent = getStyleTitleDefaultText();
   if (apiStatus) apiStatus.textContent = 'Take a full-body photo, then choose a Boliden scene.';
 
-  cards.forEach((card, index) => {
-    const scene = BOLIDEN_SCENES[index];
-    if (!scene) {
-      card.classList.add('hidden');
-      card.disabled = true;
-      card.removeAttribute('data-scene-id');
-      return;
-    }
-    card.classList.remove('hidden');
-    card.disabled = false;
+  grid.innerHTML = '';
+  for (const scene of BOLIDEN_SCENES) {
+    const card = document.createElement('button');
+    card.className = 'style-card';
     card.textContent = scene.label;
-    card.dataset.prompt = buildBolidenPrompt(scene);
+    // Server builds the Boliden prompt to avoid prompt/image-order drift.
+    card.dataset.prompt = 'boliden';
     card.dataset.sceneId = scene.id;
-  });
+
+    grid.appendChild(card);
+
+    const bgUrl = getPublicAssetUrl(scene.imagePath);
+    checkImageUrlExists(bgUrl).then((exists) => {
+      if (!exists) {
+        card.classList.add('hidden');
+        card.disabled = true;
+        card.removeAttribute('data-scene-id');
+      }
+    });
+  }
 }
 
 // Hourly cleanup ping (hits Vercel serverless /api/cleanup)

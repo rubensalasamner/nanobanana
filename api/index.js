@@ -130,10 +130,11 @@ function resolveGenerationStrategy({ company, originalPrompt, sceneId }) {
     const scene = sceneId ? BOLIDEN_SCENE_LIBRARY[sceneId] : null;
     if (scene) {
       const prompt = [
-        'Use image 1 as the background scene and image 2 as the person to insert.',
-        'Keep image 1 composition and people unchanged; treat it as the base canvas.',
+        'Use image 1 as the background scene (base canvas) and image 2 as the person to insert.',
+        'You MUST preserve image 1 exactly: do not redraw or regenerate the background. Keep image 1 pixels unchanged except for inserting the person.',
         'Add the person from image 2 as a separate, full-body subject placed naturally into image 1 with realistic scale, perspective, and lighting.',
         'Preserve the person identity and face from image 2 on the inserted subject.',
+        scene.promptHint ? scene.promptHint : '',
         `Match PPE and outfit to the work context. ${scene.ppeHint}`,
         'Keep existing people already present in image 1 unchanged.',
         'Add only the person from image 2 as the new inserted subject.',
@@ -145,12 +146,29 @@ function resolveGenerationStrategy({ company, originalPrompt, sceneId }) {
         'Output should be photorealistic and consistent with the safety culture in the scene.',
         SQUARE_QUALITY_SUFFIX.trim(),
       ].join(' ');
-      return { prompt, scene };
+
+      // When the background template image fails to load, we must NOT use a prompt that
+      // references "image 2 as the background scene", because image 2 will not exist.
+      const fallbackPrompt = [
+        'Use image 1 as the person source.',
+        `Place the person into the Boliden work context: "${scene.label}".`,
+        scene.promptHint ? scene.promptHint : '',
+        `Match PPE and outfit to the work context. ${scene.ppeHint}`,
+        'Generate a photorealistic industrial background consistent with the scene context.',
+        'Preserve the person identity and face from image 1.',
+        'Do not replace, edit, or swap any existing face or head in image 1.',
+        'No face swap. No head replacement.',
+        'No text or watermark.',
+        'Output should be photorealistic and consistent with the safety culture in the scene.',
+        SQUARE_QUALITY_SUFFIX.trim(),
+      ].join(' ');
+
+      return { prompt, fallbackPrompt, scene };
     }
   }
 
   const prompt = `${originalPrompt}${SQUARE_QUALITY_SUFFIX}`;
-  return { prompt, scene: null };
+  return { prompt, fallbackPrompt: prompt, scene: null };
 }
 
 /** ===== Route handlers ===== */
@@ -190,6 +208,8 @@ async function runGeminiEdit(fileMime, fileBuf, prompt, reqId, referenceImages =
       model: 'gemini-2.5-flash-image',
       contents,
       config: {
+        temperature: 0.2,
+        seed: 42,
         imageConfig: {
           aspectRatio: '1:1', // Square (1:1) ratio
         },
@@ -250,7 +270,12 @@ async function handleEditAndShare(req, res, reqId) {
   const sceneId = String(fields.sceneId ?? '').trim() || null;
 
   const originalPrompt = String(fields.prompt ?? '');
-  if (!originalPrompt) return res.status(400).json({ error: 'Missing prompt' });
+  if (company !== COMPANY_IDS.BOLIDEN && !originalPrompt) {
+    return res.status(400).json({ error: 'Missing prompt' });
+  }
+  if (company === COMPANY_IDS.BOLIDEN && !sceneId) {
+    return res.status(400).json({ error: 'Missing sceneId for boliden' });
+  }
   const strategy = resolveGenerationStrategy({ company, originalPrompt, sceneId });
   const sceneImageBuf = strategy.scene
     ? await loadPublicImageSafe(strategy.scene.imagePath, reqId)
@@ -260,7 +285,7 @@ async function handleEditAndShare(req, res, reqId) {
   if (strategy.scene && !sceneImageBuf) {
     log(reqId, 'warn', 'scene.image.fallback', { company, sceneId });
   }
-  const prompt = sceneImageBuf ? strategy.prompt : `${originalPrompt}${SQUARE_QUALITY_SUFFIX}`;
+  const prompt = sceneImageBuf ? strategy.prompt : strategy.fallbackPrompt;
 
   log(reqId, 'log', 'gemini.request', {
     model: 'gemini-2.5-flash-image',
