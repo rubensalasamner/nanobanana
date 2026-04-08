@@ -93,13 +93,43 @@ async function loadPublicImageSafe(relativePath) {
   }
 }
 
-function buildBolidenPrompt(scene) {
+async function extractFaceHint(buf) {
+  try {
+    const metadata = await sharp(buf).metadata();
+    const w = metadata.width || 0;
+    const h = metadata.height || 0;
+    if (w < 64 || h < 64) return null;
+
+    const cropH = Math.round(h * 0.5);
+    const cropW = Math.min(w, Math.round(cropH * 0.85));
+    const left = Math.round((w - cropW) / 2);
+
+    const cropped = await sharp(buf)
+      .extract({ left, top: 0, width: cropW, height: cropH })
+      .resize(256, 256, { fit: 'cover' })
+      .blur(0.5)
+      .toFormat('jpeg', { quality: 60 })
+      .toBuffer();
+
+    console.log(`Face hint: ${w}x${h} → ${cropW}x${cropH} → 256x256`);
+    return { mime: 'image/jpeg', buffer: cropped };
+  } catch (err) {
+    console.warn('Face hint failed:', err?.message);
+    return null;
+  }
+}
+
+function buildBolidenPrompt(scene, { hasFaceHint }) {
+  const faceHintRef = hasFaceHint
+    ? ' Image 3 is a low-resolution hint of the same person\'s face — use it only to confirm identity (face shape, eye color, skin tone), do not copy pixels from it.'
+    : '';
+
   const prompt = [
-    `Image 1 is the background scene — a Boliden "${scene.label}" work environment. Image 2 is a selfie of the person who must be inserted into that scene.`,
+    `Image 1 is the background scene — a Boliden "${scene.label}" work environment. Image 2 is a selfie of the person who must be inserted into that scene.${faceHintRef}`,
     'Keep image 1 exactly as-is: do not redraw, regenerate, or alter the background, existing workers, or equipment.',
-    'Generate a completely new full-body worker and place them naturally into image 1. The entire person — face, head, neck, and body — must be created as one cohesive figure in a single pass, not assembled or composited from separate parts.',
-    'The generated person must be recognizably the same individual as in image 2 — a viewer comparing the selfie and the output should be able to tell it is the same person. Preserve their face shape, eye color, skin tone, hair color, and approximate age. At the same time, adapt the face\'s brightness, shadow direction, color temperature, and contrast to match the lighting in image 1 so the person looks like they genuinely belong in the scene.',
-    'The head must be proportionally sized to the body (roughly 1:7 human ratio). No oversized or undersized heads.',
+    'Generate a new full-body worker and place them naturally into image 1. The entire person — face, head, neck, and body — must be created as one cohesive figure, not assembled from separate parts.',
+    'IDENTITY: The generated person\'s face must clearly be the same person as in image 2. Someone who knows this person should recognize them in the output. Preserve their face shape, eye color, nose shape, skin tone, hair color, and approximate age.',
+    'INTEGRATION: At the same time, the person must look like they belong in the scene — adapt skin brightness, shadow direction, color temperature, and contrast to match the lighting in image 1. The head must be proportionally sized to the body (roughly 1:7 ratio).',
     scene.promptHint || '',
     `Dress the person in PPE appropriate for the scene: ${scene.ppeHint}`,
     'The person should be clearly visible, facing the viewer/camera.',
@@ -110,9 +140,10 @@ function buildBolidenPrompt(scene) {
   ].filter(Boolean).join(' ');
 
   const fallbackPrompt = [
-    'Image 1 is a selfie of the person.',
+    `Image 1 is a selfie of the person.${hasFaceHint ? ' Image 2 is a low-resolution face hint of the same person — use it only to confirm identity, do not copy pixels.' : ''}`,
     `Place this person into a Boliden "${scene.label}" work environment.`,
-    'Generate a completely new full-body figure as one cohesive unit. The person must be recognizably the same individual as in image 1 — preserve face shape, eye color, skin tone, hair color, and approximate age. Adapt all lighting to the generated scene. The head must be proportionally sized to the body (roughly 1:7 ratio).',
+    'IDENTITY: The generated person\'s face must clearly be the same person as in image 1. Preserve face shape, eye color, nose shape, skin tone, hair color, and approximate age.',
+    'INTEGRATION: Adapt all lighting to the generated scene. The head must be proportionally sized to the body (roughly 1:7 ratio). Generate the entire figure as one cohesive unit.',
     scene.promptHint || '',
     `Dress the person in PPE appropriate for the scene: ${scene.ppeHint}`,
     'Generate a photorealistic industrial background consistent with the scene context.',
@@ -124,11 +155,11 @@ function buildBolidenPrompt(scene) {
   return { prompt, fallbackPrompt };
 }
 
-function resolveGenerationStrategy({ company, originalPrompt, sceneId }) {
+function resolveGenerationStrategy({ company, originalPrompt, sceneId, hasFaceHint = false }) {
   if (company === COMPANY_IDS.BOLIDEN) {
     const scene = sceneId ? BOLIDEN_SCENE_LIBRARY[sceneId] : null;
     if (scene) {
-      const { prompt, fallbackPrompt } = buildBolidenPrompt(scene);
+      const { prompt, fallbackPrompt } = buildBolidenPrompt(scene, { hasFaceHint });
       return { prompt, fallbackPrompt, scene };
     }
   }
@@ -307,7 +338,11 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
     const fileSize = req.file.buffer.length;
     if (fileSize > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Image too large' });
 
-    const strategy = resolveGenerationStrategy({ company, originalPrompt, sceneId });
+    const isBoliden = company === COMPANY_IDS.BOLIDEN;
+    const faceHint = isBoliden ? await extractFaceHint(req.file.buffer) : null;
+    const strategy = resolveGenerationStrategy({
+      company, originalPrompt, sceneId, hasFaceHint: Boolean(faceHint),
+    });
     const sceneImageBuffer = strategy.scene
       ? await loadPublicImageSafe(strategy.scene.imagePath)
       : null;
@@ -324,6 +359,7 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
     const secondaryImages = useSceneAsBase
       ? [{ mime: req.file.mimetype || 'image/jpeg', buffer: req.file.buffer }]
       : [];
+    if (faceHint) secondaryImages.push(faceHint);
     const img = await runGeminiEdit(primaryMime, primaryBuffer, prompt, secondaryImages);
     if (!img) {
       console.warn('No image returned by Gemini');
