@@ -93,13 +93,43 @@ async function loadPublicImageSafe(relativePath) {
   }
 }
 
-function buildBolidenPrompt(scene) {
+async function describePersonAppearance(fileMime, fileBuf) {
+  try {
+    const resp = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [
+        {
+          text: 'Describe this person\'s physical appearance in one concise sentence. Include: hair color and style, eye color, face shape, skin tone, approximate age range, and any distinctive features such as glasses, beard, or freckles. Be specific and objective. Do not describe clothing or background.',
+        },
+        {
+          inlineData: { mimeType: fileMime || 'image/jpeg', data: fileBuf.toString('base64') },
+        },
+      ],
+    });
+    const text = resp?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (text) {
+      console.log('Person description:', text);
+      return text;
+    }
+    console.warn('Person description: empty response');
+    return null;
+  } catch (err) {
+    console.warn('Person description failed:', err?.message || err);
+    return null;
+  }
+}
+
+function buildBolidenPrompt(scene, personDescription) {
+  const identityLine = personDescription
+    ? `The person from image 1 looks like: ${personDescription}. The generated person must match this appearance — re-create these exact features naturally within the scene's lighting.`
+    : 'The person is recognizably the same individual as in image 1 — same face shape, hair, eyes, skin tone, and overall appearance. Every part of the person is lit consistently by the scene\'s own lighting.';
+
   const prompt = [
     `Image 1: Selfie of a person — this is the identity reference.`,
     `Image 2: Photograph of a Boliden "${scene.label}" work environment.`,
     `Create a professional on-site photograph of the person from image 1 working in the environment from image 2. The result should look like a colleague took this photo of them at work.`,
     scene.promptHint || '',
-    `The person is recognizably the same individual as in image 1 — same face shape, hair, eyes, skin tone, and overall appearance. Every part of the person (face, body, clothing) is lit consistently by the scene's own lighting.`,
+    identityLine,
     `The person is wearing appropriate PPE for this work environment: ${scene.ppeHint}`,
     'Keep existing people and environment from image 2 unchanged. Add the person from image 1 as an additional worker.',
     'Natural, proportional body (head-to-body ratio ~1:7), clearly visible, facing the viewer.',
@@ -107,11 +137,15 @@ function buildBolidenPrompt(scene) {
     SQUARE_QUALITY_SUFFIX.trim(),
   ].filter(Boolean).join(' ');
 
+  const fallbackIdentityLine = personDescription
+    ? `The person from image 1 looks like: ${personDescription}. The generated person must match this appearance — re-create these exact features naturally within the environment's lighting.`
+    : 'The person is recognizably the same individual as in image 1 — same face shape, hair, eyes, skin tone, and overall appearance. Every part of the person is lit consistently by the environment.';
+
   const fallbackPrompt = [
     'Image 1: Selfie of a person — this is the identity reference.',
     `Create a professional on-site photograph of the person from image 1 working in a Boliden "${scene.label}" environment.`,
     scene.promptHint || '',
-    'The person is recognizably the same individual as in image 1 — same face shape, hair, eyes, skin tone, and overall appearance. Every part of the person is lit consistently by the environment.',
+    fallbackIdentityLine,
     `The person is wearing appropriate PPE: ${scene.ppeHint}`,
     'Natural, proportional body (head-to-body ratio ~1:7), clearly visible, facing the viewer.',
     'No text, watermarks, or logos.',
@@ -121,11 +155,11 @@ function buildBolidenPrompt(scene) {
   return { prompt, fallbackPrompt };
 }
 
-function resolveGenerationStrategy({ company, originalPrompt, sceneId }) {
+function resolveGenerationStrategy({ company, originalPrompt, sceneId, personDescription }) {
   if (company === COMPANY_IDS.BOLIDEN) {
     const scene = sceneId ? BOLIDEN_SCENE_LIBRARY[sceneId] : null;
     if (scene) {
-      const { prompt, fallbackPrompt } = buildBolidenPrompt(scene);
+      const { prompt, fallbackPrompt } = buildBolidenPrompt(scene, personDescription);
       return { prompt, fallbackPrompt, scene };
     }
   }
@@ -304,7 +338,10 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
     const fileSize = req.file.buffer.length;
     if (fileSize > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Image too large' });
 
-    const strategy = resolveGenerationStrategy({ company, originalPrompt, sceneId });
+    const personDescription = company === COMPANY_IDS.BOLIDEN
+      ? await describePersonAppearance(req.file.mimetype, req.file.buffer)
+      : null;
+    const strategy = resolveGenerationStrategy({ company, originalPrompt, sceneId, personDescription });
     const sceneImageBuffer = strategy.scene
       ? await loadPublicImageSafe(strategy.scene.imagePath)
       : null;
