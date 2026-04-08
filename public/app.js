@@ -64,6 +64,10 @@ const shareTelegram = document.getElementById('shareTelegram');
 const shareEmail = document.getElementById('shareEmail');
 const btnBackFromShare = document.getElementById('btnBackFromShare');
 
+// ----- Deploy banner -----
+const deployNow = document.getElementById('deployNow');
+const deployStamp = document.getElementById('deployStamp');
+
 let currentStep = 'screensaver';
 let idleTimer = null;
 let idleTimeoutMs = 120000; // 2 minutes in milliseconds
@@ -1294,3 +1298,47 @@ applyCompanyExperience();
 currentStep = modeStrategy.initialStep;
 showStep(currentStep);
 updateResultButtons();
+
+function formatClock(d) {
+  return new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  }).format(d);
+}
+
+function startClock() {
+  if (!deployNow) return;
+  const tick = () => {
+    deployNow.textContent = formatClock(new Date());
+  };
+  tick();
+  setInterval(tick, 1000);
+}
+
+function stringifyDeployStamp(diag) {
+  if (!diag || typeof diag !== 'object') return 'unknown';
+  const parts = [];
+  if (diag.vercelGitCommitSha) parts.push(String(diag.vercelGitCommitSha).slice(0, 7));
+  if (diag.vercelDeploymentId) parts.push(String(diag.vercelDeploymentId));
+  if (diag.serverStartedAt) parts.push(`started ${diag.serverStartedAt}`);
+  if (diag.ts) parts.push(`diag ${diag.ts}`);
+  return parts.length ? parts.join(' • ') : 'unknown';
+}
+
+async function loadDeployStamp() {
+  if (!deployStamp) return;
+  try {
+    const res = await fetch('/api/diag', { cache: 'no-store' });
+    const diag = await res.json().catch(() => null);
+    deployStamp.textContent = stringifyDeployStamp(diag);
+  } catch {
+    deployStamp.textContent = 'unavailable';
+  }
+}
+
+startClock();
+loadDeployStamp();

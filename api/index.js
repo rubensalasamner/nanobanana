@@ -22,6 +22,7 @@ export const config = {
 };
 
 /** ===== Config / Constants ===== */
+const SERVER_STARTED_AT = new Date().toISOString();
 const UPLOAD_TARGET = (process.env.UPLOAD_TARGET || 'blob').toLowerCase(); // 'blob' | 'dataurl'
 const MAX_UPLOAD_BYTES = 4.3 * 1024 * 1024; // guard for serverless limits
 const ONE_HOUR_MS = 60 * 60 * 1000;
@@ -205,9 +206,14 @@ async function handleHealthz(_req, res) {
 async function handleDiag(_req, res) {
   res.status(200).json({
     ok: true,
+    ts: new Date().toISOString(),
+    serverStartedAt: SERVER_STARTED_AT,
     hasKey: Boolean(process.env.GEMINI_API_KEY),
     uploadTarget: UPLOAD_TARGET,
     model: 'gemini-2.5-flash-image',
+    vercelDeploymentId: process.env.VERCEL_DEPLOYMENT_ID || null,
+    vercelGitCommitSha: process.env.VERCEL_GIT_COMMIT_SHA || null,
+    vercelRegion: process.env.VERCEL_REGION || null,
   });
 }
 

@@ -31,6 +31,8 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const SERVER_STARTED_AT = new Date().toISOString();
+
 const app = express();
 app.set('trust proxy', true);
 
@@ -202,6 +204,8 @@ app.get('/healthz', (_req, res) => res.json({ ok: true }));
 app.get('/diag', (_req, res) => {
   res.json({
     ok: true,
+    ts: new Date().toISOString(),
+    serverStartedAt: SERVER_STARTED_AT,
     hasKey: Boolean(process.env.GEMINI_API_KEY),
     model: 'gemini-2.5-flash-image',
     uploadTarget: UPLOAD_TARGET,

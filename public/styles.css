@@ -74,6 +74,46 @@ body {
   color: var(--fg);
 }
 
+.deploy-banner {
+  position: fixed;
+  top: 10px;
+  left: 12px;
+  right: 12px;
+  z-index: 70;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  pointer-events: none;
+}
+
+.deploy-banner__label {
+  opacity: 0.72;
+}
+
+.deploy-banner__value {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.deploy-banner__sep {
+  opacity: 0.6;
+}
+
+@media print {
+  .deploy-banner {
+    display: none !important;
+  }
+}
+
 .step-nav {
   position: fixed;
   top: 12px;
