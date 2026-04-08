@@ -128,26 +128,23 @@ async function loadPublicImageSafe(relativePath, reqId) {
 
 function buildBolidenPrompt(scene) {
   const prompt = [
-    `Image 1 is a photograph of a Boliden "${scene.label}" work environment. Image 2 is a selfie of a specific person.`,
-    'Create a new photorealistic photograph that shows the person from image 2 working in the environment from image 1. Imagine a professional photographer took this picture of that person on-site.',
-    'The output must look like a single, naturally taken photograph — not a composite or collage.',
+    `Image 1: Selfie of a person — this is the identity reference.`,
+    `Image 2: Photograph of a Boliden "${scene.label}" work environment.`,
+    `Create a professional on-site photograph of the person from image 1 working in the environment from image 2. The result should look like a colleague took this photo of them at work.`,
     scene.promptHint || '',
-    'IDENTITY: The person must be clearly recognizable as the same individual from image 2. Preserve their face shape, bone structure, eye shape and color, nose shape, mouth shape, hair color and style, and skin tone. These features are the identity — they must carry over.',
-    'RENDERING: Do NOT copy or paste the face from the selfie. Instead, re-draw the face from scratch so it naturally belongs in the scene — matching the scene\'s lighting, color temperature, shadows, and atmosphere. The face should look like it was photographed in this environment, not spliced in from a different photo.',
+    `The person is recognizably the same individual as in image 1 — same face shape, hair, eyes, skin tone, and overall appearance. Every part of the person (face, body, clothing) is lit consistently by the scene's own lighting.`,
     `The person is wearing appropriate PPE for this work environment: ${scene.ppeHint}`,
-    'Keep the existing people and environment from image 1 unchanged. Add the person from image 2 as an additional worker in the scene.',
-    'The person should have a natural, proportional body (head-to-body ratio ~1:7), be clearly visible, and face the viewer.',
-    'Do not alter or swap any existing faces in image 1. No text, watermarks, or logos.',
+    'Keep existing people and environment from image 2 unchanged. Add the person from image 1 as an additional worker.',
+    'Natural, proportional body (head-to-body ratio ~1:7), clearly visible, facing the viewer.',
+    'Do not alter or swap any existing faces in image 2. No text, watermarks, or logos.',
     SQUARE_QUALITY_SUFFIX.trim(),
   ].filter(Boolean).join(' ');
 
   const fallbackPrompt = [
-    'Image 1 is a selfie of a specific person.',
-    `Create a new photorealistic photograph that shows this person working in a Boliden "${scene.label}" environment. Imagine a professional photographer took this picture of that person on-site.`,
-    'The output must look like a single, naturally taken photograph — not a composite.',
+    'Image 1: Selfie of a person — this is the identity reference.',
+    `Create a professional on-site photograph of the person from image 1 working in a Boliden "${scene.label}" environment.`,
     scene.promptHint || '',
-    'IDENTITY: The person must be clearly recognizable as the same individual from image 1. Preserve their face shape, bone structure, eye shape and color, nose shape, mouth shape, hair color and style, and skin tone.',
-    'RENDERING: Do NOT copy or paste the face from the selfie. Instead, re-draw the face from scratch so it naturally belongs in the scene — matching the scene\'s lighting, color temperature, shadows, and atmosphere.',
+    'The person is recognizably the same individual as in image 1 — same face shape, hair, eyes, skin tone, and overall appearance. Every part of the person is lit consistently by the environment.',
     `The person is wearing appropriate PPE: ${scene.ppeHint}`,
     'Natural, proportional body (head-to-body ratio ~1:7), clearly visible, facing the viewer.',
     'No text, watermarks, or logos.',
@@ -303,13 +300,10 @@ async function handleEditAndShare(req, res, reqId) {
     company,
     sceneId,
   });
-  const useSceneAsBase = Boolean(sceneImageBuf);
-  const primaryMime = useSceneAsBase ? 'image/jpeg' : fileMime;
-  const primaryBuf = useSceneAsBase ? sceneImageBuf : fileBuf;
-  const secondaryImages = useSceneAsBase
-    ? [{ mime: fileMime || 'image/jpeg', buf: fileBuf }]
+  const secondaryImages = sceneImageBuf
+    ? [{ mime: 'image/jpeg', buf: sceneImageBuf }]
     : [];
-  const outImg = await runGeminiEdit(primaryMime, primaryBuf, prompt, reqId, secondaryImages);
+  const outImg = await runGeminiEdit(fileMime, fileBuf, prompt, reqId, secondaryImages);
   if (!outImg) {
     log(reqId, 'error', 'gemini.noImage', { prompt: prompt.substring(0, 100) });
     return res.status(422).json({
