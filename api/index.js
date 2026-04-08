@@ -205,10 +205,14 @@ async function handleHealthz(_req, res) {
 }
 
 async function handleDiag(_req, res) {
+  const explicitDeployStamp =
+    process.env.NANOBANANA_DEPLOY_STAMP || process.env.DEPLOY_STAMP || process.env.DEPLOYED_AT || null;
+
   res.status(200).json({
     ok: true,
     ts: new Date().toISOString(),
     serverStartedAt: SERVER_STARTED_AT,
+    deployStamp: explicitDeployStamp || SERVER_STARTED_AT,
     hasKey: Boolean(process.env.GEMINI_API_KEY),
     uploadTarget: UPLOAD_TARGET,
     model: 'gemini-2.5-flash-image',

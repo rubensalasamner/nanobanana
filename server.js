@@ -203,10 +203,14 @@ app.use(
 // --- health & diagnostics ---
 app.get('/healthz', (_req, res) => res.json({ ok: true }));
 app.get('/diag', (_req, res) => {
+  const explicitDeployStamp =
+    process.env.NANOBANANA_DEPLOY_STAMP || process.env.DEPLOY_STAMP || process.env.DEPLOYED_AT || null;
+
   res.json({
     ok: true,
     ts: new Date().toISOString(),
     serverStartedAt: SERVER_STARTED_AT,
+    deployStamp: explicitDeployStamp || SERVER_STARTED_AT,
     hasKey: Boolean(process.env.GEMINI_API_KEY),
     model: 'gemini-2.5-flash-image',
     uploadTarget: UPLOAD_TARGET,
