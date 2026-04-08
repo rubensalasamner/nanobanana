@@ -93,45 +93,16 @@ async function loadPublicImageSafe(relativePath) {
   }
 }
 
-async function extractFaceCrop(buf) {
-  try {
-    const metadata = await sharp(buf).metadata();
-    const w = metadata.width || 0;
-    const h = metadata.height || 0;
-    if (w < 64 || h < 64) return null;
-
-    const cropH = Math.round(h * 0.55);
-    const cropW = Math.min(w, Math.round(cropH * 0.85));
-    const left = Math.round((w - cropW) / 2);
-
-    const cropped = await sharp(buf)
-      .extract({ left, top: 0, width: cropW, height: cropH })
-      .resize(384, 384, { fit: 'cover' })
-      .toFormat('jpeg', { quality: 80 })
-      .toBuffer();
-
-    console.log(`Face crop: ${w}x${h} → ${cropW}x${cropH} → 512x512`);
-    return { mime: 'image/jpeg', buffer: cropped };
-  } catch (err) {
-    console.warn('Face crop failed:', err?.message);
-    return null;
-  }
-}
-
-function buildBolidenPrompt(scene, { hasFaceCrop }) {
-  const faceCropRef = hasFaceCrop
-    ? ' Image 3 is a close-up crop of that same person\'s face for identity reference.'
-    : '';
-
+function buildBolidenPrompt(scene) {
   const prompt = [
-    `Image 1 is the background scene — a Boliden "${scene.label}" work environment. Image 2 is a selfie of the person who must be inserted into that scene.${faceCropRef}`,
+    `Image 1 is the background scene — a Boliden "${scene.label}" work environment. Image 2 is a selfie of the person who must be inserted into that scene.`,
     'Keep image 1 exactly as-is: do not redraw, regenerate, or alter the background, existing workers, or equipment.',
-    'Insert the person from image 2 as a new, full-body worker standing naturally in the scene with correct scale, perspective, and lighting that matches image 1.',
-    'The inserted person\'s face must closely resemble the person in image 2 — preserve their eye shape, eye color, nose structure, jawline, and skin tone. However, the face must be fully integrated into the generated body: adapt the face\'s brightness, shadow direction, color temperature, and contrast to match the scene lighting in image 1. The face should look like it belongs in this environment, not pasted on.',
-    'The head must be proportionally sized to the body. Use realistic human head-to-body ratio (roughly 1:7). Do not enlarge or shrink the head relative to the torso and limbs.',
+    'Generate a completely new full-body worker and place them naturally into image 1. The entire person — face, head, neck, and body — must be created as one cohesive figure in a single pass, not assembled or composited from separate parts.',
+    'The generated person must be recognizably the same individual as in image 2 — a viewer comparing the selfie and the output should be able to tell it is the same person. Preserve their face shape, eye color, skin tone, hair color, and approximate age. At the same time, adapt the face\'s brightness, shadow direction, color temperature, and contrast to match the lighting in image 1 so the person looks like they genuinely belong in the scene.',
+    'The head must be proportionally sized to the body (roughly 1:7 human ratio). No oversized or undersized heads.',
     scene.promptHint || '',
-    `Dress the inserted person in PPE appropriate for the scene: ${scene.ppeHint}`,
-    'The inserted person should be clearly visible, facing the viewer/camera with head and eyes oriented toward the viewer.',
+    `Dress the person in PPE appropriate for the scene: ${scene.ppeHint}`,
+    'The person should be clearly visible, facing the viewer/camera.',
     'Do not replace, edit, swap, or merge any existing face or head already in image 1. No face swap. No head replacement.',
     'No added text, watermarks, or logos.',
     'Produce a single photorealistic output consistent with the industrial safety culture of the scene.',
@@ -139,9 +110,9 @@ function buildBolidenPrompt(scene, { hasFaceCrop }) {
   ].filter(Boolean).join(' ');
 
   const fallbackPrompt = [
-    `Image 1 is a selfie of the person.${hasFaceCrop ? ' Image 2 is a close-up crop of that same person\'s face for identity reference.' : ''}`,
+    'Image 1 is a selfie of the person.',
     `Place this person into a Boliden "${scene.label}" work environment.`,
-    'The person\'s face must closely resemble image 1 — preserve eye shape, eye color, nose structure, jawline, and skin tone. Adapt the face\'s lighting to match the generated scene. The head must be proportionally sized to the body (roughly 1:7 ratio).',
+    'Generate a completely new full-body figure as one cohesive unit. The person must be recognizably the same individual as in image 1 — preserve face shape, eye color, skin tone, hair color, and approximate age. Adapt all lighting to the generated scene. The head must be proportionally sized to the body (roughly 1:7 ratio).',
     scene.promptHint || '',
     `Dress the person in PPE appropriate for the scene: ${scene.ppeHint}`,
     'Generate a photorealistic industrial background consistent with the scene context.',
@@ -153,11 +124,11 @@ function buildBolidenPrompt(scene, { hasFaceCrop }) {
   return { prompt, fallbackPrompt };
 }
 
-function resolveGenerationStrategy({ company, originalPrompt, sceneId, hasFaceCrop = false }) {
+function resolveGenerationStrategy({ company, originalPrompt, sceneId }) {
   if (company === COMPANY_IDS.BOLIDEN) {
     const scene = sceneId ? BOLIDEN_SCENE_LIBRARY[sceneId] : null;
     if (scene) {
-      const { prompt, fallbackPrompt } = buildBolidenPrompt(scene, { hasFaceCrop });
+      const { prompt, fallbackPrompt } = buildBolidenPrompt(scene);
       return { prompt, fallbackPrompt, scene };
     }
   }
@@ -336,14 +307,7 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
     const fileSize = req.file.buffer.length;
     if (fileSize > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Image too large' });
 
-    const isBoliden = company === COMPANY_IDS.BOLIDEN;
-    const faceCrop = isBoliden ? await extractFaceCrop(req.file.buffer) : null;
-    const strategy = resolveGenerationStrategy({
-      company,
-      originalPrompt,
-      sceneId,
-      hasFaceCrop: Boolean(faceCrop),
-    });
+    const strategy = resolveGenerationStrategy({ company, originalPrompt, sceneId });
     const sceneImageBuffer = strategy.scene
       ? await loadPublicImageSafe(strategy.scene.imagePath)
       : null;
@@ -360,7 +324,6 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
     const secondaryImages = useSceneAsBase
       ? [{ mime: req.file.mimetype || 'image/jpeg', buffer: req.file.buffer }]
       : [];
-    if (faceCrop) secondaryImages.push(faceCrop);
     const img = await runGeminiEdit(primaryMime, primaryBuffer, prompt, secondaryImages);
     if (!img) {
       console.warn('No image returned by Gemini');
