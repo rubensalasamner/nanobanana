@@ -139,8 +139,8 @@ async function extractFaceCrop(buf, mime, reqId) {
 
     const cropped = await sharp(buf)
       .extract({ left, top: 0, width: cropW, height: cropH })
-      .resize(512, 512, { fit: 'cover' })
-      .toFormat('jpeg', { quality: 90 })
+      .resize(384, 384, { fit: 'cover' })
+      .toFormat('jpeg', { quality: 80 })
       .toBuffer();
 
     log(reqId, 'log', 'faceCrop.ok', { inputW: w, inputH: h, cropW, cropH });
@@ -153,14 +153,15 @@ async function extractFaceCrop(buf, mime, reqId) {
 
 function buildBolidenPrompt(scene, { hasFaceCrop }) {
   const faceCropRef = hasFaceCrop
-    ? ' Image 3 is a close-up crop of that same person\'s face — use it as the primary identity anchor.'
+    ? ' Image 3 is a close-up crop of that same person\'s face for identity reference.'
     : '';
 
   const prompt = [
     `Image 1 is the background scene — a Boliden "${scene.label}" work environment. Image 2 is a selfie of the person who must be inserted into that scene.${faceCropRef}`,
     'Keep image 1 exactly as-is: do not redraw, regenerate, or alter the background, existing workers, or equipment.',
-    `Insert the person from image 2 as a new, full-body worker standing naturally in the scene with correct scale, perspective, and lighting that matches image 1.`,
-    `The inserted person's face MUST be an exact likeness of the person in image 2: preserve their eye shape, eye color, nose structure, jawline, brow line, skin tone, and facial proportions precisely. Do not generalize, beautify, or average out any facial features.`,
+    'Insert the person from image 2 as a new, full-body worker standing naturally in the scene with correct scale, perspective, and lighting that matches image 1.',
+    'The inserted person\'s face must closely resemble the person in image 2 — preserve their eye shape, eye color, nose structure, jawline, and skin tone. However, the face must be fully integrated into the generated body: adapt the face\'s brightness, shadow direction, color temperature, and contrast to match the scene lighting in image 1. The face should look like it belongs in this environment, not pasted on.',
+    'The head must be proportionally sized to the body. Use realistic human head-to-body ratio (roughly 1:7). Do not enlarge or shrink the head relative to the torso and limbs.',
     scene.promptHint || '',
     `Dress the inserted person in PPE appropriate for the scene: ${scene.ppeHint}`,
     'The inserted person should be clearly visible, facing the viewer/camera with head and eyes oriented toward the viewer.',
@@ -171,9 +172,9 @@ function buildBolidenPrompt(scene, { hasFaceCrop }) {
   ].filter(Boolean).join(' ');
 
   const fallbackPrompt = [
-    `Image 1 is a selfie of the person.${hasFaceCrop ? ' Image 2 is a close-up crop of that same person\'s face — use it as the primary identity anchor.' : ''}`,
+    `Image 1 is a selfie of the person.${hasFaceCrop ? ' Image 2 is a close-up crop of that same person\'s face for identity reference.' : ''}`,
     `Place this person into a Boliden "${scene.label}" work environment.`,
-    `The person's face MUST be an exact likeness of image 1: preserve their eye shape, eye color, nose structure, jawline, brow line, skin tone, and facial proportions precisely.`,
+    'The person\'s face must closely resemble image 1 — preserve eye shape, eye color, nose structure, jawline, and skin tone. Adapt the face\'s lighting to match the generated scene. The head must be proportionally sized to the body (roughly 1:7 ratio).',
     scene.promptHint || '',
     `Dress the person in PPE appropriate for the scene: ${scene.ppeHint}`,
     'Generate a photorealistic industrial background consistent with the scene context.',
