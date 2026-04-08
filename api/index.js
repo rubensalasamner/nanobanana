@@ -129,9 +129,11 @@ async function loadPublicImageSafe(relativePath, reqId) {
 function buildBolidenPrompt(scene) {
   const prompt = [
     `Image 1 is a photograph of a Boliden "${scene.label}" work environment. Image 2 is a selfie of a specific person.`,
-    'Create a new photorealistic photograph that shows the person from image 2 working in the environment from image 1. Imagine this is a real photograph taken of that same person on-site — they were simply photographed at work instead of taking a selfie.',
-    'The output must look like a single, naturally taken photograph — not a composite or collage. The person\'s face, body, clothing, and surroundings should all share the same lighting, color grading, and atmosphere.',
+    'Create a new photorealistic photograph that shows the person from image 2 working in the environment from image 1. Imagine a professional photographer took this picture of that person on-site.',
+    'The output must look like a single, naturally taken photograph — not a composite or collage.',
     scene.promptHint || '',
+    'IDENTITY: The person must be clearly recognizable as the same individual from image 2. Preserve their face shape, bone structure, eye shape and color, nose shape, mouth shape, hair color and style, and skin tone. These features are the identity — they must carry over.',
+    'RENDERING: Do NOT copy or paste the face from the selfie. Instead, re-draw the face from scratch so it naturally belongs in the scene — matching the scene\'s lighting, color temperature, shadows, and atmosphere. The face should look like it was photographed in this environment, not spliced in from a different photo.',
     `The person is wearing appropriate PPE for this work environment: ${scene.ppeHint}`,
     'Keep the existing people and environment from image 1 unchanged. Add the person from image 2 as an additional worker in the scene.',
     'The person should have a natural, proportional body (head-to-body ratio ~1:7), be clearly visible, and face the viewer.',
@@ -141,9 +143,11 @@ function buildBolidenPrompt(scene) {
 
   const fallbackPrompt = [
     'Image 1 is a selfie of a specific person.',
-    `Create a new photorealistic photograph that shows this person working in a Boliden "${scene.label}" environment. Imagine this is a real on-site photograph of the same individual.`,
-    'The output must look like a single, naturally taken photograph — not a composite. The person\'s face, body, clothing, and surroundings should all share the same lighting and atmosphere.',
+    `Create a new photorealistic photograph that shows this person working in a Boliden "${scene.label}" environment. Imagine a professional photographer took this picture of that person on-site.`,
+    'The output must look like a single, naturally taken photograph — not a composite.',
     scene.promptHint || '',
+    'IDENTITY: The person must be clearly recognizable as the same individual from image 1. Preserve their face shape, bone structure, eye shape and color, nose shape, mouth shape, hair color and style, and skin tone.',
+    'RENDERING: Do NOT copy or paste the face from the selfie. Instead, re-draw the face from scratch so it naturally belongs in the scene — matching the scene\'s lighting, color temperature, shadows, and atmosphere.',
     `The person is wearing appropriate PPE: ${scene.ppeHint}`,
     'Natural, proportional body (head-to-body ratio ~1:7), clearly visible, facing the viewer.',
     'No text, watermarks, or logos.',
