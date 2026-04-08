@@ -95,6 +95,10 @@ body {
   pointer-events: none;
 }
 
+.deploy-banner--hidden {
+  display: none !important;
+}
+
 .deploy-banner__label {
   opacity: 0.72;
 }

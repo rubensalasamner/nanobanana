@@ -65,6 +65,7 @@ const shareEmail = document.getElementById('shareEmail');
 const btnBackFromShare = document.getElementById('btnBackFromShare');
 
 // ----- Deploy banner -----
+const deployBanner = document.getElementById('deployBanner');
 const deployStamp = document.getElementById('deployStamp');
 
 let currentStep = 'screensaver';
@@ -276,6 +277,10 @@ const modeStrategy = MODE_STRATEGIES[appMode];
 idleTimeoutMs = modeStrategy.idleTimeoutMs;
 const useNativeMobileCapture = shouldUseNativeMobileCapture();
 let selectedSceneId = null;
+
+function shouldShowDeployBanner() {
+  return appMode === APP_MODES.MOBILE && companyId === COMPANY_IDS.BOLIDEN;
+}
 
 function buildBolidenPrompt(scene) {
   return [
@@ -1299,7 +1304,7 @@ showStep(currentStep);
 updateResultButtons();
 
 async function loadDeployStamp() {
-  if (!deployStamp) return;
+  if (!deployStamp || !shouldShowDeployBanner()) return;
   try {
     const res = await fetch('/api/diag', { cache: 'no-store' });
     const diag = await res.json().catch(() => null);
@@ -1309,4 +1314,7 @@ async function loadDeployStamp() {
   }
 }
 
+if (deployBanner) {
+  deployBanner.classList.toggle('deploy-banner--hidden', !shouldShowDeployBanner());
+}
 loadDeployStamp();
