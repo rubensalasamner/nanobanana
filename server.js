@@ -91,42 +91,70 @@ async function loadPublicImageSafe(relativePath) {
   }
 }
 
-function resolveGenerationStrategy({ company, originalPrompt, sceneId }) {
+async function extractFaceCrop(buf) {
+  try {
+    const metadata = await sharp(buf).metadata();
+    const w = metadata.width || 0;
+    const h = metadata.height || 0;
+    if (w < 64 || h < 64) return null;
+
+    const cropH = Math.round(h * 0.55);
+    const cropW = Math.min(w, Math.round(cropH * 0.85));
+    const left = Math.round((w - cropW) / 2);
+
+    const cropped = await sharp(buf)
+      .extract({ left, top: 0, width: cropW, height: cropH })
+      .resize(512, 512, { fit: 'cover' })
+      .toFormat('jpeg', { quality: 90 })
+      .toBuffer();
+
+    console.log(`Face crop: ${w}x${h} → ${cropW}x${cropH} → 512x512`);
+    return { mime: 'image/jpeg', buffer: cropped };
+  } catch (err) {
+    console.warn('Face crop failed:', err?.message);
+    return null;
+  }
+}
+
+function buildBolidenPrompt(scene, { hasFaceCrop }) {
+  const faceCropRef = hasFaceCrop
+    ? ' Image 3 is a close-up crop of that same person\'s face — use it as the primary identity anchor.'
+    : '';
+
+  const prompt = [
+    `Image 1 is the background scene — a Boliden "${scene.label}" work environment. Image 2 is a selfie of the person who must be inserted into that scene.${faceCropRef}`,
+    'Keep image 1 exactly as-is: do not redraw, regenerate, or alter the background, existing workers, or equipment.',
+    `Insert the person from image 2 as a new, full-body worker standing naturally in the scene with correct scale, perspective, and lighting that matches image 1.`,
+    `The inserted person's face MUST be an exact likeness of the person in image 2: preserve their eye shape, eye color, nose structure, jawline, brow line, skin tone, and facial proportions precisely. Do not generalize, beautify, or average out any facial features.`,
+    scene.promptHint || '',
+    `Dress the inserted person in PPE appropriate for the scene: ${scene.ppeHint}`,
+    'The inserted person should be clearly visible, facing the viewer/camera with head and eyes oriented toward the viewer.',
+    'Do not replace, edit, swap, or merge any existing face or head already in image 1. No face swap. No head replacement.',
+    'No added text, watermarks, or logos.',
+    'Produce a single photorealistic output consistent with the industrial safety culture of the scene.',
+    SQUARE_QUALITY_SUFFIX.trim(),
+  ].filter(Boolean).join(' ');
+
+  const fallbackPrompt = [
+    `Image 1 is a selfie of the person.${hasFaceCrop ? ' Image 2 is a close-up crop of that same person\'s face — use it as the primary identity anchor.' : ''}`,
+    `Place this person into a Boliden "${scene.label}" work environment.`,
+    `The person's face MUST be an exact likeness of image 1: preserve their eye shape, eye color, nose structure, jawline, brow line, skin tone, and facial proportions precisely.`,
+    scene.promptHint || '',
+    `Dress the person in PPE appropriate for the scene: ${scene.ppeHint}`,
+    'Generate a photorealistic industrial background consistent with the scene context.',
+    'No face swap. No head replacement. No text, watermarks, or logos.',
+    'Produce a single photorealistic output consistent with the industrial safety culture of the scene.',
+    SQUARE_QUALITY_SUFFIX.trim(),
+  ].filter(Boolean).join(' ');
+
+  return { prompt, fallbackPrompt };
+}
+
+function resolveGenerationStrategy({ company, originalPrompt, sceneId, hasFaceCrop = false }) {
   if (company === COMPANY_IDS.BOLIDEN) {
     const scene = sceneId ? BOLIDEN_SCENE_LIBRARY[sceneId] : null;
     if (scene) {
-      const prompt = [
-        'Use image 1 as the background scene (base canvas) and image 2 as the person to insert.',
-        'You MUST preserve image 1 exactly: do not redraw or regenerate the background. Keep image 1 pixels unchanged except for inserting the person.',
-        'Add the person from image 2 as a separate, full-body subject placed naturally into image 1 with realistic scale, perspective, and lighting.',
-        'Preserve the person identity and face from image 2 on the inserted subject.',
-        scene.promptHint ? scene.promptHint : '',
-        `Match PPE and outfit to the work context. ${scene.ppeHint}`,
-        'Keep existing people already present in image 1 unchanged.',
-        'Add only the person from image 2 as the new inserted subject.',
-        'The inserted person must be clearly visible in the final image.',
-        'The inserted person should face the viewer/camera, with head and eyes oriented toward the viewer.',
-        'Do not replace, edit, or swap any existing face or head in image 1.',
-        'No face swap. No head replacement.',
-        'No text or watermark.',
-        'Output should be photorealistic and consistent with the safety culture in the scene.',
-        SQUARE_QUALITY_SUFFIX.trim(),
-      ].join(' ');
-
-      const fallbackPrompt = [
-        'Use image 1 as the person source.',
-        `Place the person into the Boliden work context: "${scene.label}".`,
-        scene.promptHint ? scene.promptHint : '',
-        `Match PPE and outfit to the work context. ${scene.ppeHint}`,
-        'Generate a photorealistic industrial background consistent with the scene context.',
-        'Preserve the person identity and face from image 1.',
-        'Do not replace, edit, or swap any existing face or head in image 1.',
-        'No face swap. No head replacement.',
-        'No text or watermark.',
-        'Output should be photorealistic and consistent with the safety culture in the scene.',
-        SQUARE_QUALITY_SUFFIX.trim(),
-      ].join(' ');
-
+      const { prompt, fallbackPrompt } = buildBolidenPrompt(scene, { hasFaceCrop });
       return { prompt, fallbackPrompt, scene };
     }
   }
@@ -299,14 +327,17 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
     const fileSize = req.file.buffer.length;
     if (fileSize > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Image too large' });
 
-    const strategy = resolveGenerationStrategy({ company, originalPrompt, sceneId });
+    const isBoliden = company === COMPANY_IDS.BOLIDEN;
+    const faceCrop = isBoliden ? await extractFaceCrop(req.file.buffer) : null;
+    const strategy = resolveGenerationStrategy({
+      company,
+      originalPrompt,
+      sceneId,
+      hasFaceCrop: Boolean(faceCrop),
+    });
     const sceneImageBuffer = strategy.scene
       ? await loadPublicImageSafe(strategy.scene.imagePath)
       : null;
-    const referenceImages = [];
-    if (sceneImageBuffer) {
-      referenceImages.push({ mime: 'image/jpeg', buffer: sceneImageBuffer });
-    }
     if (strategy.scene && !sceneImageBuffer) {
       console.warn(`Boliden scene image missing for sceneId=${sceneId}, falling back to default flow`);
     }
@@ -319,7 +350,8 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
     const primaryBuffer = useSceneAsBase ? sceneImageBuffer : req.file.buffer;
     const secondaryImages = useSceneAsBase
       ? [{ mime: req.file.mimetype || 'image/jpeg', buffer: req.file.buffer }]
-      : referenceImages;
+      : [];
+    if (faceCrop) secondaryImages.push(faceCrop);
     const img = await runGeminiEdit(primaryMime, primaryBuffer, prompt, secondaryImages);
     if (!img) {
       console.warn('No image returned by Gemini');
