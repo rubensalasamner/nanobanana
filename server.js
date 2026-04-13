@@ -77,6 +77,37 @@ function getPathnameFromUrl(u) {
   }
 }
 
+function isAllowedShareDownloadSrc(src, req) {
+  let u;
+  try {
+    u = new URL(src);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+
+  let reqHost;
+  try {
+    reqHost = new URL(getOrigin(req)).hostname;
+  } catch {
+    return false;
+  }
+
+  if (u.hostname === reqHost) {
+    return u.pathname.startsWith('/shares/') && !u.pathname.includes('..');
+  }
+  if (u.hostname.endsWith('.public.blob.vercel-storage.com')) return true;
+  const r2 = process.env.R2_PUBLIC_URL;
+  if (r2) {
+    try {
+      if (new URL(r2).hostname === u.hostname) return true;
+    } catch {
+      /* ignore */
+    }
+  }
+  return false;
+}
+
 function extFromMime(mime) {
   if (mime === 'image/webp') return 'webp';
   if (mime === 'image/png') return 'png';
@@ -283,6 +314,53 @@ function extractImagePart(resp) {
   return null;
 }
 
+// --- /api/share-download: same-origin download for cross-origin share URLs (e.g. Vercel Blob) ---
+app.get('/api/share-download', async (req, res) => {
+  const src = typeof req.query.src === 'string' ? req.query.src : '';
+  if (!src) return res.status(400).json({ error: 'Missing src' });
+  if (!isAllowedShareDownloadSrc(src, req)) return res.status(403).json({ error: 'Forbidden' });
+
+  try {
+    const u = new URL(src);
+    const origin = getOrigin(req);
+    if (u.origin === origin && u.pathname.startsWith('/shares/')) {
+      const rel = path.normalize(u.pathname.slice(1)).replace(/^(\.\.(\/|\\|$))+/, '');
+      if (!rel.startsWith('shares/')) return res.status(403).json({ error: 'Forbidden' });
+      const filePath = path.join(PUBLIC_DIR, ...rel.split('/'));
+      if (!filePath.startsWith(SHARES_DIR)) return res.status(403).json({ error: 'Forbidden' });
+      const buf = await fsp.readFile(filePath);
+      const ext = path.extname(filePath).slice(1).toLowerCase();
+      const ct =
+        ext === 'webp' ? 'image/webp' : ext === 'png' ? 'image/png' : 'image/jpeg';
+      const base = path.basename(filePath);
+      res.setHeader('Content-Type', ct);
+      res.setHeader('Content-Disposition', `attachment; filename="${base}"`);
+      return res.status(200).send(buf);
+    }
+
+    const r = await fetch(src, { redirect: 'follow' });
+    if (!r.ok) return res.status(502).json({ error: 'Upstream error' });
+    const ct = r.headers.get('content-type') || 'application/octet-stream';
+    let pathname;
+    try {
+      pathname = new URL(src).pathname;
+    } catch {
+      pathname = '';
+    }
+    const fromUrl = pathname.split('/').pop();
+    const safeName = (fromUrl && fromUrl.includes('.') ? fromUrl : 'nanobanana-image.jpg').replace(
+      /[^a-zA-Z0-9._-]/g,
+      '_'
+    );
+    res.setHeader('Content-Type', ct.startsWith('image/') ? ct : 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    res.status(200).send(Buffer.from(await r.arrayBuffer()));
+  } catch (err) {
+    console.error('share-download failed:', err);
+    res.status(500).json({ error: 'Download failed' });
+  }
+});
+
 // --- /api/edit: returns the edited image binary directly ---
 app.post('/api/edit', upload.single('image'), async (req, res) => {
   try {
@@ -383,24 +461,24 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
       let ext = extFromMime(outMime);
 
       if (clientMode !== 'mobile') {
-        // Booth flow: normalize to print-ready 1800x1800 WebP.
+        // Booth flow: normalize to print-ready 1800x1800 JPEG.
         const metadata = await sharp(outBuffer).metadata();
         console.log(`Resizing image from ${metadata.width}x${metadata.height} to 1800x1800`);
 
-        const webpBuffer = await sharp(outBuffer)
+        const jpegBuffer = await sharp(outBuffer)
           .rotate()
           .resize(1800, 1800, {
             fit: 'fill',
             withoutEnlargement: false,
           })
-          .toFormat('webp', { quality: 95 })
+          .toFormat('jpeg', { quality: 95 })
           .toBuffer();
 
-        const outputMetadata = await sharp(webpBuffer).metadata();
+        const outputMetadata = await sharp(jpegBuffer).metadata();
         console.log(`Resized image to ${outputMetadata.width}x${outputMetadata.height}`);
-        outBuffer = webpBuffer;
-        outMime = 'image/webp';
-        ext = 'webp';
+        outBuffer = jpegBuffer;
+        outMime = 'image/jpeg';
+        ext = 'jpg';
       } else {
         console.log(
           `Skipping resize in mobile mode; preserving generated ${outMime} (${outBuffer.length} bytes)`

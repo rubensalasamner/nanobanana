@@ -115,6 +115,74 @@ function getOrigin(req) {
   return `${proto}://${host}`;
 }
 
+function isAllowedShareDownloadSrc(src, req) {
+  let u;
+  try {
+    u = new URL(src);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+
+  let reqHost;
+  try {
+    reqHost = new URL(getOrigin(req)).hostname;
+  } catch {
+    return false;
+  }
+
+  if (u.hostname === reqHost) {
+    return u.pathname.startsWith('/shares/') && !u.pathname.includes('..');
+  }
+  if (u.hostname.endsWith('.public.blob.vercel-storage.com')) return true;
+  const r2 = process.env.R2_PUBLIC_URL;
+  if (r2) {
+    try {
+      if (new URL(r2).hostname === u.hostname) return true;
+    } catch {
+      /* ignore */
+    }
+  }
+  return false;
+}
+
+async function handleShareDownload(req, res, reqId) {
+  const reqUrl = new URL(req.url, 'http://localhost');
+  const src = reqUrl.searchParams.get('src');
+  if (!src) return res.status(400).json({ error: 'Missing src' });
+  if (!isAllowedShareDownloadSrc(src, req)) {
+    log(reqId, 'warn', 'shareDownload.denied', { srcPreview: src.slice(0, 96) });
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  try {
+    const r = await fetch(src, { redirect: 'follow' });
+    if (!r.ok) {
+      log(reqId, 'warn', 'shareDownload.upstream', { status: r.status });
+      return res.status(502).json({ error: 'Upstream error' });
+    }
+    const ct = r.headers.get('content-type') || 'application/octet-stream';
+    let pathname;
+    try {
+      pathname = new URL(src).pathname;
+    } catch {
+      pathname = '';
+    }
+    const fromUrl = pathname.split('/').pop();
+    const safeName = (fromUrl && fromUrl.includes('.') ? fromUrl : 'nanobanana-image.jpg').replace(
+      /[^a-zA-Z0-9._-]/g,
+      '_'
+    );
+
+    res.setHeader('Content-Type', ct.startsWith('image/') ? ct : 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    res.status(200).send(Buffer.from(await r.arrayBuffer()));
+  } catch (e) {
+    log(reqId, 'error', 'shareDownload.fail', { message: e?.message });
+    res.status(500).json({ error: 'Download failed' });
+  }
+}
+
 async function loadPublicImageSafe(relativePath, reqId) {
   try {
     const imagePath = join(process.cwd(), 'public', ...relativePath.split('/'));
@@ -361,29 +429,29 @@ async function handleEditAndShare(req, res, reqId) {
     let ext = extFromMime(outImg.mime);
 
     if (clientMode !== 'mobile') {
-      // Booth flow: normalize to print-ready 1800x1800 WebP.
+      // Booth flow: normalize to print-ready 1800x1800 JPEG.
       const metadata = await sharp(outImg.buf).metadata();
       log(reqId, 'log', 'resize.input', { width: metadata.width, height: metadata.height });
 
-      const webpBuf = await sharp(outImg.buf)
+      const jpegBuf = await sharp(outImg.buf)
         .rotate()
         .resize(1800, 1800, {
           fit: 'fill',
           withoutEnlargement: false,
         })
-        .toFormat('webp', { quality: 95 })
+        .toFormat('jpeg', { quality: 95 })
         .toBuffer();
 
-      const outputMetadata = await sharp(webpBuf).metadata();
+      const outputMetadata = await sharp(jpegBuf).metadata();
       log(reqId, 'log', 'resize.output', {
         width: outputMetadata.width,
         height: outputMetadata.height,
       });
 
-      uploadBuf = webpBuf;
-      contentType = 'image/webp';
-      ext = 'webp';
-      outMime = 'image/webp';
+      uploadBuf = jpegBuf;
+      contentType = 'image/jpeg';
+      ext = 'jpg';
+      outMime = 'image/jpeg';
     } else {
       // Mobile flow: preserve generated image size and format.
       outMime = outImg.mime;
@@ -487,6 +555,8 @@ export default async function handler(req, res) {
     if (req.method === 'GET' && req.url.startsWith('/api/diag')) return handleDiag(req, res);
     if (req.method === 'GET' && req.url.startsWith('/api/cleanup'))
       return handleCleanup(req, res, reqId);
+    if (req.method === 'GET' && req.url.startsWith('/api/share-download'))
+      return handleShareDownload(req, res, reqId);
 
     if (req.method !== 'POST') {
       log(reqId, 'warn', 'method.notAllowed', { method: req.method });

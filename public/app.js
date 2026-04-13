@@ -882,13 +882,54 @@ function restoreStyleCards() {
   }
 }
 
+function isCrossOriginImageUrl(imageUrl) {
+  if (!imageUrl || imageUrl.startsWith('data:')) return false;
+  try {
+    return new URL(imageUrl).origin !== window.location.origin;
+  } catch {
+    return true;
+  }
+}
+
+async function downloadShareImage(imageUrl, fallbackFilename = 'nanobanana-image.jpg') {
+  if (!imageUrl) return;
+  if (imageUrl.startsWith('data:')) {
+    const a = document.createElement('a');
+    a.href = imageUrl;
+    a.download = fallbackFilename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    return;
+  }
+  if (isCrossOriginImageUrl(imageUrl)) {
+    const a = document.createElement('a');
+    a.href = `/api/share-download?src=${encodeURIComponent(imageUrl)}`;
+    a.download = fallbackFilename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    return;
+  }
+  const response = await fetch(imageUrl);
+  const blob = await response.blob();
+  const blobUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = blobUrl;
+  a.download = fallbackFilename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(blobUrl);
+}
+
 function attachResultActions(out) {
   btnDownload.disabled = false;
   btnDownload.onclick = () => {
-    const a = document.createElement('a');
-    a.href = out.imageUrl;
-    a.download = 'booth.webp';
-    a.click();
+    downloadShareImage(out.imageUrl, 'booth.jpg').catch((err) => {
+      console.error('Download failed:', err);
+      window.open(out.imageUrl, '_blank');
+    });
   };
 
   btnPrint.disabled = false;
@@ -1159,37 +1200,12 @@ function handleDownload() {
     btnPrintResult.style.opacity = '0.5';
     btnPrintResult.style.cursor = 'not-allowed';
 
-    // Download the image
     const imageUrl = resultPhoto?.src || latestShare?.imageUrl;
     if (imageUrl) {
       try {
-        // For cross-origin URLs (like Vercel Blob), we need to fetch as blob first
-        // Check if it's a data URL (local) or remote URL
-        if (imageUrl.startsWith('data:')) {
-          // Data URL - can download directly
-          const a = document.createElement('a');
-          a.href = imageUrl;
-          a.download = 'nanobanana-image.webp';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-        } else {
-          // Remote URL - fetch as blob to enable download
-          const response = await fetch(imageUrl);
-          const blob = await response.blob();
-          const blobUrl = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = blobUrl;
-          a.download = 'nanobanana-image.webp';
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          // Clean up the object URL
-          URL.revokeObjectURL(blobUrl);
-        }
+        await downloadShareImage(imageUrl, 'nanobanana-image.jpg');
       } catch (error) {
         console.error('Download failed:', error);
-        // Fallback: try opening in new tab if download fails
         window.open(imageUrl, '_blank');
       }
     }

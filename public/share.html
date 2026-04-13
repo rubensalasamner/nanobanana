@@ -295,7 +295,7 @@
       const params = new URLSearchParams(window.location.search);
       const imageUrl = params.get('imageUrl');
       const id = params.get('id') || 'photo';
-      const mime = params.get('mime') || 'image/webp';
+      const mime = params.get('mime') || 'image/jpeg';
 
       const photoEl = document.getElementById('photo');
       const downloadBtn = document.getElementById('downloadBtn');
