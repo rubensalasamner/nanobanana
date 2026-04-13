@@ -19,6 +19,10 @@ import {
   COMPANY_IDS,
   resolveCompany as resolveCompanyId,
 } from './public/shared/company-scenes.js';
+import {
+  getOutputAspectPreset,
+  resolveOutputAspectId,
+} from './public/shared/output-aspect.js';
 
 // Exit early if running on Vercel (should not happen, but safety check)
 if (process.env.VERCEL) {
@@ -52,8 +56,6 @@ try {
 // --- config ---
 const UPLOAD_TARGET = (process.env.UPLOAD_TARGET || 'filesystem').toLowerCase(); // filesystem | dataurl
 const MAX_UPLOAD_BYTES = 4.3 * 1024 * 1024;
-const SQUARE_QUALITY_SUFFIX =
-  '\n\nRedraw the content from image 1 in a 1:1 square aspect ratio. Adjust image 1 by adding content as needed to fill a perfect square (1:1) format. Make sure no blank areas are left. Generate a high-quality, detailed, sharp focus image suitable for 300dpi printing.';
 
 // --- helpers ---
 function getOrigin(req) {
@@ -150,7 +152,7 @@ async function describePersonAppearance(fileMime, fileBuf) {
   }
 }
 
-function buildBolidenPrompt(scene, personDescription) {
+function buildBolidenPrompt(scene, personDescription, qualitySuffix) {
   const identityLine = personDescription
     ? `The person from image 1 looks like: ${personDescription}. The generated person must match this appearance — re-create these exact features naturally within the scene's lighting.`
     : 'The person is recognizably the same individual as in image 1 — same face shape, hair, eyes, skin tone, and overall appearance. Every part of the person is lit consistently by the scene\'s own lighting.';
@@ -165,7 +167,7 @@ function buildBolidenPrompt(scene, personDescription) {
     'Keep existing people and environment from image 2 unchanged. Add the person from image 1 as an additional worker.',
     'Natural, proportional body (head-to-body ratio ~1:7), clearly visible, facing the viewer.',
     'Do not alter or swap any existing faces in image 2. No text, watermarks, or logos.',
-    SQUARE_QUALITY_SUFFIX.trim(),
+    qualitySuffix.trim(),
   ].filter(Boolean).join(' ');
 
   const fallbackIdentityLine = personDescription
@@ -180,21 +182,21 @@ function buildBolidenPrompt(scene, personDescription) {
     `The person is wearing appropriate PPE: ${scene.ppeHint}`,
     'Natural, proportional body (head-to-body ratio ~1:7), clearly visible, facing the viewer.',
     'No text, watermarks, or logos.',
-    SQUARE_QUALITY_SUFFIX.trim(),
+    qualitySuffix.trim(),
   ].filter(Boolean).join(' ');
 
   return { prompt, fallbackPrompt };
 }
 
-function resolveGenerationStrategy({ company, originalPrompt, sceneId, personDescription }) {
+function resolveGenerationStrategy({ company, originalPrompt, sceneId, personDescription, qualitySuffix }) {
   if (company === COMPANY_IDS.BOLIDEN) {
     const scene = sceneId ? BOLIDEN_SCENE_LIBRARY[sceneId] : null;
     if (scene) {
-      const { prompt, fallbackPrompt } = buildBolidenPrompt(scene, personDescription);
+      const { prompt, fallbackPrompt } = buildBolidenPrompt(scene, personDescription, qualitySuffix);
       return { prompt, fallbackPrompt, scene };
     }
   }
-  const prompt = `${originalPrompt}${SQUARE_QUALITY_SUFFIX}`;
+  const prompt = `${originalPrompt}${qualitySuffix}`;
   return { prompt, fallbackPrompt: prompt, scene: null };
 }
 
@@ -267,7 +269,13 @@ async function load4x6BlackImage() {
   }
 }
 
-async function runGeminiEdit(fileMime, fileBuf, prompt, referenceImages = []) {
+async function runGeminiEdit(
+  fileMime,
+  fileBuf,
+  prompt,
+  referenceImages = [],
+  geminiAspectRatio = '1:1'
+) {
   // Build contents array with prompt and images
   const contents = [{ text: prompt }];
 
@@ -291,7 +299,7 @@ async function runGeminiEdit(fileMime, fileBuf, prompt, referenceImages = []) {
       temperature: 0.2,
       seed: 42,
       imageConfig: {
-        aspectRatio: '1:1', // Square (1:1) ratio
+        aspectRatio: geminiAspectRatio,
       },
     },
   });
@@ -378,7 +386,14 @@ app.post('/api/edit', upload.single('image'), async (req, res) => {
 
     console.log(`Editing image (${req.file.mimetype}, ${fileSize} bytes) with prompt: "${prompt}"`);
 
-    const img = await runGeminiEdit(req.file.mimetype, req.file.buffer, prompt);
+    const aspectPreset = getOutputAspectPreset(resolveOutputAspectId(req.body.aspect));
+    const img = await runGeminiEdit(
+      req.file.mimetype,
+      req.file.buffer,
+      prompt,
+      [],
+      aspectPreset.geminiAspectRatio
+    );
     if (!img) {
       console.warn('No image in response from Gemini');
       return res.status(422).json({ error: 'Model returned no image' });
@@ -416,10 +431,18 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
     const fileSize = req.file.buffer.length;
     if (fileSize > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Image too large' });
 
+    const outputAspectId = resolveOutputAspectId(req.body.aspect);
+    const aspectPreset = getOutputAspectPreset(outputAspectId);
     const personDescription = company === COMPANY_IDS.BOLIDEN
       ? await describePersonAppearance(req.file.mimetype, req.file.buffer)
       : null;
-    const strategy = resolveGenerationStrategy({ company, originalPrompt, sceneId, personDescription });
+    const strategy = resolveGenerationStrategy({
+      company,
+      originalPrompt,
+      sceneId,
+      personDescription,
+      qualitySuffix: aspectPreset.qualitySuffix,
+    });
     const sceneImageBuffer = strategy.scene
       ? await loadPublicImageSafe(strategy.scene.imagePath)
       : null;
@@ -433,7 +456,13 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
     const secondaryImages = sceneImageBuffer
       ? [{ mime: 'image/jpeg', buffer: sceneImageBuffer }]
       : [];
-    const img = await runGeminiEdit(req.file.mimetype, req.file.buffer, prompt, secondaryImages);
+    const img = await runGeminiEdit(
+      req.file.mimetype,
+      req.file.buffer,
+      prompt,
+      secondaryImages,
+      aspectPreset.geminiAspectRatio
+    );
     if (!img) {
       console.warn('No image returned by Gemini');
       return res.status(422).json({ error: 'Model returned no image' });
@@ -461,17 +490,29 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
       let ext = extFromMime(outMime);
 
       if (clientMode !== 'mobile') {
-        // Booth flow: normalize to print-ready 1800x1800 JPEG.
         const metadata = await sharp(outBuffer).metadata();
-        console.log(`Resizing image from ${metadata.width}x${metadata.height} to 1800x1800`);
+        console.log(
+          `Resizing image from ${metadata.width}x${metadata.height} to ${aspectPreset.exportWidth}x${aspectPreset.exportHeight}`
+        );
 
-        const jpegBuffer = await sharp(outBuffer)
-          .rotate()
-          .resize(1800, 1800, {
-            fit: 'fill',
-            withoutEnlargement: false,
+        let preResize = await sharp(outBuffer).rotate().toBuffer();
+        try {
+          const trimmed = await sharp(preResize).trim({ threshold: 32 }).toBuffer();
+          const tm = await sharp(trimmed).metadata();
+          if (tm.width >= 64 && tm.height >= 64) {
+            preResize = trimmed;
+            console.log(`Trimmed uniform border; working size ${tm.width}x${tm.height}`);
+          }
+        } catch {
+          /* no trim */
+        }
+
+        const jpegBuffer = await sharp(preResize)
+          .resize(aspectPreset.exportWidth, aspectPreset.exportHeight, {
+            fit: 'cover',
+            position: 'centre',
           })
-          .toFormat('jpeg', { quality: 95 })
+          .jpeg({ quality: 95 })
           .toBuffer();
 
         const outputMetadata = await sharp(jpegBuffer).metadata();

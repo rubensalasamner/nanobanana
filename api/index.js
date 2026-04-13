@@ -13,6 +13,10 @@ import {
   COMPANY_IDS,
   resolveCompany as resolveCompanyId,
 } from '../public/shared/company-scenes.js';
+import {
+  getOutputAspectPreset,
+  resolveOutputAspectId,
+} from '../public/shared/output-aspect.js';
 
 import { put as blobPut, list as blobList, del as blobDel } from './storage.js';
 
@@ -26,8 +30,6 @@ const SERVER_STARTED_AT = new Date().toISOString();
 const UPLOAD_TARGET = (process.env.UPLOAD_TARGET || 'blob').toLowerCase(); // 'blob' | 'dataurl'
 const MAX_UPLOAD_BYTES = 4.3 * 1024 * 1024; // guard for serverless limits
 const ONE_HOUR_MS = 60 * 60 * 1000;
-const SQUARE_QUALITY_SUFFIX =
-  '\n\nRedraw the content from image 1 in a 1:1 square aspect ratio. Adjust image 1 by adding content as needed to fill a perfect square (1:1) format. Make sure no blank areas are left. Generate a high-quality, detailed, sharp focus image suitable for 300dpi printing.';
 
 /** ===== Logging ===== */
 function log(reqId, level, msg, meta = {}) {
@@ -221,7 +223,7 @@ async function describePersonAppearance(fileMime, fileBuf, reqId) {
   }
 }
 
-function buildBolidenPrompt(scene, personDescription) {
+function buildBolidenPrompt(scene, personDescription, qualitySuffix) {
   const identityLine = personDescription
     ? `The person from image 1 looks like: ${personDescription}. The generated person must match this appearance — re-create these exact features naturally within the scene's lighting.`
     : 'The person is recognizably the same individual as in image 1 — same face shape, hair, eyes, skin tone, and overall appearance. Every part of the person is lit consistently by the scene\'s own lighting.';
@@ -236,7 +238,7 @@ function buildBolidenPrompt(scene, personDescription) {
     'Keep existing people and environment from image 2 unchanged. Add the person from image 1 as an additional worker.',
     'Natural, proportional body (head-to-body ratio ~1:7), clearly visible, facing the viewer.',
     'Do not alter or swap any existing faces in image 2. No text, watermarks, or logos.',
-    SQUARE_QUALITY_SUFFIX.trim(),
+    qualitySuffix.trim(),
   ].filter(Boolean).join(' ');
 
   const fallbackIdentityLine = personDescription
@@ -251,22 +253,22 @@ function buildBolidenPrompt(scene, personDescription) {
     `The person is wearing appropriate PPE: ${scene.ppeHint}`,
     'Natural, proportional body (head-to-body ratio ~1:7), clearly visible, facing the viewer.',
     'No text, watermarks, or logos.',
-    SQUARE_QUALITY_SUFFIX.trim(),
+    qualitySuffix.trim(),
   ].filter(Boolean).join(' ');
 
   return { prompt, fallbackPrompt };
 }
 
-function resolveGenerationStrategy({ company, originalPrompt, sceneId, personDescription }) {
+function resolveGenerationStrategy({ company, originalPrompt, sceneId, personDescription, qualitySuffix }) {
   if (company === COMPANY_IDS.BOLIDEN) {
     const scene = sceneId ? BOLIDEN_SCENE_LIBRARY[sceneId] : null;
     if (scene) {
-      const { prompt, fallbackPrompt } = buildBolidenPrompt(scene, personDescription);
+      const { prompt, fallbackPrompt } = buildBolidenPrompt(scene, personDescription, qualitySuffix);
       return { prompt, fallbackPrompt, scene };
     }
   }
 
-  const prompt = `${originalPrompt}${SQUARE_QUALITY_SUFFIX}`;
+  const prompt = `${originalPrompt}${qualitySuffix}`;
   return { prompt, fallbackPrompt: prompt, scene: null };
 }
 
@@ -293,7 +295,14 @@ async function handleDiag(_req, res) {
   });
 }
 
-async function runGeminiEdit(fileMime, fileBuf, prompt, reqId, referenceImages = []) {
+async function runGeminiEdit(
+  fileMime,
+  fileBuf,
+  prompt,
+  reqId,
+  referenceImages = [],
+  geminiAspectRatio = '1:1'
+) {
   try {
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
@@ -319,7 +328,7 @@ async function runGeminiEdit(fileMime, fileBuf, prompt, reqId, referenceImages =
         temperature: 0.2,
         seed: 42,
         imageConfig: {
-          aspectRatio: '1:1', // Square (1:1) ratio
+          aspectRatio: geminiAspectRatio,
         },
       },
     });
@@ -356,7 +365,15 @@ async function handleEdit(req, res, reqId) {
     size: fileSize,
     promptLength: prompt.length,
   });
-  const outImg = await runGeminiEdit(fileMime, fileBuf, prompt, reqId);
+  const aspectPreset = getOutputAspectPreset(resolveOutputAspectId(fields.aspect));
+  const outImg = await runGeminiEdit(
+    fileMime,
+    fileBuf,
+    prompt,
+    reqId,
+    [],
+    aspectPreset.geminiAspectRatio
+  );
   if (!outImg) {
     log(reqId, 'error', 'gemini.noImage', { prompt: prompt.substring(0, 100) });
     return res.status(422).json({
@@ -384,10 +401,18 @@ async function handleEditAndShare(req, res, reqId) {
   if (company === COMPANY_IDS.BOLIDEN && !sceneId) {
     return res.status(400).json({ error: 'Missing sceneId for boliden' });
   }
+  const outputAspectId = resolveOutputAspectId(fields.aspect);
+  const aspectPreset = getOutputAspectPreset(outputAspectId);
   const personDescription = company === COMPANY_IDS.BOLIDEN
     ? await describePersonAppearance(fileMime, fileBuf, reqId)
     : null;
-  const strategy = resolveGenerationStrategy({ company, originalPrompt, sceneId, personDescription });
+  const strategy = resolveGenerationStrategy({
+    company,
+    originalPrompt,
+    sceneId,
+    personDescription,
+    qualitySuffix: aspectPreset.qualitySuffix,
+  });
   const sceneImageBuf = strategy.scene
     ? await loadPublicImageSafe(strategy.scene.imagePath, reqId)
     : null;
@@ -405,11 +430,19 @@ async function handleEditAndShare(req, res, reqId) {
     clientMode,
     company,
     sceneId,
+    outputAspect: outputAspectId,
   });
   const secondaryImages = sceneImageBuf
     ? [{ mime: 'image/jpeg', buf: sceneImageBuf }]
     : [];
-  const outImg = await runGeminiEdit(fileMime, fileBuf, prompt, reqId, secondaryImages);
+  const outImg = await runGeminiEdit(
+    fileMime,
+    fileBuf,
+    prompt,
+    reqId,
+    secondaryImages,
+    aspectPreset.geminiAspectRatio
+  );
   if (!outImg) {
     log(reqId, 'error', 'gemini.noImage', { prompt: prompt.substring(0, 100) });
     return res.status(422).json({
@@ -429,17 +462,27 @@ async function handleEditAndShare(req, res, reqId) {
     let ext = extFromMime(outImg.mime);
 
     if (clientMode !== 'mobile') {
-      // Booth flow: normalize to print-ready 1800x1800 JPEG.
       const metadata = await sharp(outImg.buf).metadata();
       log(reqId, 'log', 'resize.input', { width: metadata.width, height: metadata.height });
 
-      const jpegBuf = await sharp(outImg.buf)
-        .rotate()
-        .resize(1800, 1800, {
-          fit: 'fill',
-          withoutEnlargement: false,
+      let preResize = await sharp(outImg.buf).rotate().toBuffer();
+      try {
+        const trimmed = await sharp(preResize).trim({ threshold: 32 }).toBuffer();
+        const tm = await sharp(trimmed).metadata();
+        if (tm.width >= 64 && tm.height >= 64) {
+          preResize = trimmed;
+          log(reqId, 'log', 'gemini.trim', { w: tm.width, h: tm.height });
+        }
+      } catch {
+        /* uniform border trim not applicable */
+      }
+
+      const jpegBuf = await sharp(preResize)
+        .resize(aspectPreset.exportWidth, aspectPreset.exportHeight, {
+          fit: 'cover',
+          position: 'centre',
         })
-        .toFormat('jpeg', { quality: 95 })
+        .jpeg({ quality: 95 })
         .toBuffer();
 
       const outputMetadata = await sharp(jpegBuf).metadata();

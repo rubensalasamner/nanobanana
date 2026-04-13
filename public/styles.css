@@ -211,7 +211,7 @@ body {
   width: min(300px, 60vw);
   max-width: 100%;
   height: auto;
-  aspect-ratio: 1 / 1; /* Square */
+  aspect-ratio: 1 / 1;
   object-fit: contain;
   border-radius: 16px;
   margin: 0 auto 32px;
@@ -220,6 +220,14 @@ body {
 
 .style-preview.hidden {
   display: none;
+}
+
+body[data-output-aspect='3:4'] .style-preview {
+  aspect-ratio: 3 / 4;
+}
+
+body[data-output-aspect='3:4'] .result-stage {
+  aspect-ratio: 3 / 4;
 }
 
 .style-grid {

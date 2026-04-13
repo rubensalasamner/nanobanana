@@ -3,6 +3,10 @@ import {
   COMPANY_IDS,
   resolveCompany as resolveCompanyId,
 } from './shared/company-scenes.js';
+import {
+  getOutputAspectPreset,
+  resolveOutputAspectId,
+} from './shared/output-aspect.js';
 
 // ----- DOM -----
 const video = document.getElementById('video');
@@ -272,7 +276,13 @@ const MODE_STRATEGIES = Object.freeze({
 });
 
 const appMode = resolveAppMode();
-const companyId = resolveCompanyId(new URLSearchParams(window.location.search).get('company'));
+const launchSearch = new URLSearchParams(window.location.search);
+const companyId = resolveCompanyId(launchSearch.get('company'));
+const outputAspectId = resolveOutputAspectId(launchSearch.get('aspect'));
+const outputAspectPreset = getOutputAspectPreset(outputAspectId);
+if (document.body) {
+  document.body.dataset.outputAspect = outputAspectId;
+}
 const modeStrategy = MODE_STRATEGIES[appMode];
 idleTimeoutMs = modeStrategy.idleTimeoutMs;
 const useNativeMobileCapture = shouldUseNativeMobileCapture();
@@ -360,49 +370,39 @@ setInterval(() => fetch('/api/cleanup').catch(() => {}), 60 * 60 * 1000);
 
 // ----- Helpers -----
 /**
- * Fit image to target aspect ratio with padding instead of cropping
+ * Center-crop source to target aspect ratio, then scale to targetW×targetH (no letterboxing).
  * @param {HTMLImageElement | HTMLVideoElement} image - Source image or video element
  * @param {number} targetW - Target width
  * @param {number} targetH - Target height
- * @returns {string} - Base64 data URL of fitted image
+ * @returns {string} - Base64 data URL
  */
 function cropToAspectRatio(image, targetW, targetH) {
   const inputW = image.videoWidth || image.width;
   const inputH = image.videoHeight || image.height;
-  const inputRatio = inputW / inputH;
   const targetRatio = targetW / targetH;
+  const inputRatio = inputW / inputH;
 
-  // Calculate scale to fit entire image within target dimensions
-  let scale, drawW, drawH, offsetX, offsetY;
-
+  let sx;
+  let sy;
+  let sw;
+  let sh;
   if (inputRatio > targetRatio) {
-    // Input is wider → fit to width, add padding top/bottom
-    scale = targetW / inputW;
-    drawW = targetW;
-    drawH = inputH * scale;
-    offsetX = 0;
-    offsetY = (targetH - drawH) / 2;
+    sh = inputH;
+    sw = inputH * targetRatio;
+    sx = (inputW - sw) / 2;
+    sy = 0;
   } else {
-    // Input is taller → fit to height, add padding left/right
-    scale = targetH / inputH;
-    drawW = inputW * scale;
-    drawH = targetH;
-    offsetX = (targetW - drawW) / 2;
-    offsetY = 0;
+    sw = inputW;
+    sh = inputW / targetRatio;
+    sx = 0;
+    sy = (inputH - sh) / 2;
   }
 
-  // Draw into canvas with padding
   const canvas = document.createElement('canvas');
   canvas.width = targetW;
   canvas.height = targetH;
   const ctx = canvas.getContext('2d');
-
-  // Fill with white background (or black if you prefer)
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, targetW, targetH);
-
-  // Draw the scaled image centered
-  ctx.drawImage(image, offsetX, offsetY, drawW, drawH);
+  ctx.drawImage(image, sx, sy, sw, sh, 0, 0, targetW, targetH);
 
   return canvas.toDataURL('image/jpeg', 0.9);
 }
@@ -578,22 +578,31 @@ async function handleNativeCaptureChange(event) {
     video.classList.add('hidden');
     canvas.classList.add('hidden');
 
+    const croppedDataUrl = cropToAspectRatio(
+      sourceImg,
+      outputAspectPreset.uploadWidth,
+      outputAspectPreset.uploadHeight
+    );
     if (stylePreview) {
-      stylePreview.src = objectUrl;
+      stylePreview.src = croppedDataUrl;
     }
 
     const MAX = 1600;
-    const sourceW = sourceImg.width;
-    const sourceH = sourceImg.height;
-    const longEdge = Math.max(sourceW, sourceH);
+    const longEdge = Math.max(outputAspectPreset.uploadWidth, outputAspectPreset.uploadHeight);
     const scale = Math.min(1, MAX / longEdge);
-    const upW = Math.round(sourceW * scale);
-    const upH = Math.round(sourceH * scale);
+    const upW = Math.round(outputAspectPreset.uploadWidth * scale);
+    const upH = Math.round(outputAspectPreset.uploadHeight * scale);
+    const croppedImg = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = croppedDataUrl;
+    });
     const tmp = document.createElement('canvas');
     tmp.width = upW;
     tmp.height = upH;
     const tmpCtx = tmp.getContext('2d');
-    tmpCtx.drawImage(sourceImg, 0, 0, upW, upH);
+    tmpCtx.drawImage(croppedImg, 0, 0, upW, upH);
     latestBlob = await toBlobAsync(tmp, 'image/jpeg', 0.85);
 
     btnRetake.classList.remove('hidden');
@@ -688,17 +697,18 @@ async function takeSnapshot() {
   canvas.classList.add('hidden');
   photo.classList.remove('hidden');
 
-  // Crop to 1:1 square aspect ratio for API in the background
-  // Use a reasonable size for cropping, then downscale for upload
-  const cropTargetW = 1800; // Target width for 1:1 ratio
-  const cropTargetH = 1800; // Target height for 1:1 ratio
-  const croppedDataUrl = cropToAspectRatio(video, cropTargetW, cropTargetH);
+  // Letterbox to 3:4 portrait for API in the background
+  const croppedDataUrl = cropToAspectRatio(
+    video,
+    outputAspectPreset.uploadWidth,
+    outputAspectPreset.uploadHeight
+  );
 
-  // Downscale cropped image for upload
   const MAX = 1600; // long edge
-  const scale = Math.min(1, MAX / cropTargetW); // cropTargetW is the longer edge for 1:1
-  const upW = Math.round(cropTargetW * scale);
-  const upH = Math.round(cropTargetH * scale);
+  const longEdge = Math.max(outputAspectPreset.uploadWidth, outputAspectPreset.uploadHeight);
+  const scale = Math.min(1, MAX / longEdge);
+  const upW = Math.round(outputAspectPreset.uploadWidth * scale);
+  const upH = Math.round(outputAspectPreset.uploadHeight * scale);
 
   // Convert cropped data URL to blob for upload (in background)
   const croppedImg = new Image();
@@ -828,6 +838,7 @@ function createEditAndShareFormData(imageBlob, prompt, sceneId) {
   form.append('prompt', prompt);
   form.append('mode', appMode);
   form.append('company', companyId);
+  form.append('aspect', outputAspectId);
   if (sceneId) form.append('sceneId', sceneId);
   return form;
 }
