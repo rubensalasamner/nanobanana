@@ -1,4 +1,15 @@
 // Shared HTTP-style handlers and pipeline logic for api/index.js (Vercel) and server.js (local).
+//
+// Responsibilities left in this file:
+//   - Input parsing, validation, and size checks
+//   - Scene resolution, aspect preset resolution, personBrief derivation
+//   - Strategy selection + execution (delegated to ./strategies)
+//   - Post-generation image prep (sharp resize/trim), upload (blob/filesystem/dataurl), QR
+//
+// Generation specifics (Gemini calls, face swap, prompt construction) live in
+// ./geminiClient.js, ./faceSwap.js, ./strategies/*.js, and
+// ../public/shared/boliden/*.js respectively.
+
 import { readFile, readdir, stat, unlink, writeFile } from 'fs/promises';
 import { join } from 'path';
 
@@ -8,6 +19,7 @@ import QRCode from 'qrcode';
 import sharp from 'sharp';
 
 import {
+  BOLIDEN_SCENE_LIBRARY,
   COMPANY_IDS,
   resolveCompany as resolveCompanyId,
 } from '../public/shared/company-scenes.js';
@@ -15,10 +27,10 @@ import {
   getOutputAspectPreset,
   resolveOutputAspectId,
 } from '../public/shared/output-aspect.js';
-import {
-  describePersonAppearance,
-  resolveGenerationStrategy,
-} from '../public/shared/boliden-prompt.js';
+import { describePersonAppearance } from '../public/shared/boliden/identity.js';
+
+import { runGeminiEdit } from './geminiClient.js';
+import { runStrategyWithFallback, selectStrategy } from './strategies/index.js';
 
 export const MAX_UPLOAD_BYTES = 4.3 * 1024 * 1024;
 export const ONE_HOUR_MS = 60 * 60 * 1000;
@@ -74,21 +86,6 @@ export function extFromMime(m) {
   return 'jpg';
 }
 
-export function extractFirstImage(resp) {
-  const candidates = resp?.candidates || [];
-  for (const c of candidates) {
-    const parts = c?.content?.parts || [];
-    for (const p of parts) {
-      if (p?.inlineData?.data) {
-        const mime = p.inlineData.mimeType || 'image/png';
-        const buf = Buffer.from(p.inlineData.data, 'base64');
-        return { mime, buf };
-      }
-    }
-  }
-  return null;
-}
-
 export function getQueryParam(req, name) {
   const q = req.query?.[name];
   if (typeof q === 'string' && q) return q;
@@ -106,58 +103,6 @@ export async function loadPublicImageSafe(publicDir, relativePath, log) {
   } catch (err) {
     log?.('warn', 'scene.image.missing', { relativePath, message: err?.message });
     return null;
-  }
-}
-
-export async function runGeminiEdit({
-  apiKey,
-  fileMime,
-  fileBuf,
-  prompt,
-  referenceImages = [],
-  geminiAspectRatio = '1:1',
-  reqId,
-  log,
-}) {
-  try {
-    const ai = new GoogleGenAI({ apiKey });
-    const contents = [{ text: prompt }];
-    contents.push({
-      inlineData: { mimeType: fileMime || 'image/jpeg', data: fileBuf.toString('base64') },
-    });
-    for (const ref of referenceImages) {
-      if (!ref?.buf) continue;
-      contents.push({
-        inlineData: { mimeType: ref.mime || 'image/jpeg', data: ref.buf.toString('base64') },
-      });
-    }
-
-    const resp = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents,
-      config: {
-        temperature: 0.2,
-        seed: 42,
-        imageConfig: {
-          aspectRatio: geminiAspectRatio,
-        },
-      },
-    });
-    const result = extractFirstImage(resp);
-    if (!result && resp) {
-      log?.(reqId, 'warn', 'gemini.noImage', {
-        prompt: prompt.substring(0, 100),
-        candidates: resp?.candidates?.length || 0,
-        response: JSON.stringify(resp).substring(0, 500),
-      });
-    }
-    return result;
-  } catch (err) {
-    log?.(reqId, 'error', 'gemini.error', {
-      message: err?.message,
-      prompt: prompt.substring(0, 100),
-    });
-    throw err;
   }
 }
 
@@ -273,9 +218,8 @@ export async function runEditCore({
   const aspectPreset = getOutputAspectPreset(resolveOutputAspectId(fields.aspect));
   const outImg = await runGeminiEdit({
     apiKey: geminiApiKey,
-    fileMime,
-    fileBuf,
-    prompt,
+    prompt: `${prompt}${aspectPreset.qualitySuffix || ''}`,
+    primaryImage: { mime: fileMime, buf: fileBuf },
     referenceImages: [],
     geminiAspectRatio: aspectPreset.geminiAspectRatio,
     reqId,
@@ -294,6 +238,59 @@ export async function runEditCore({
 
   log(reqId, 'log', 'gemini.ok', { outMime: outImg.mime, outBytes: outImg.buf.length });
   return { ok: true, image: outImg };
+}
+
+async function buildStrategyContext({
+  fields,
+  fileBuf,
+  fileMime,
+  publicDir,
+  geminiApiKey,
+  reqId,
+  log,
+}) {
+  const company = resolveCompanyId(String(fields.company ?? ''));
+  const sceneId = String(fields.sceneId ?? '').trim() || null;
+  const originalPrompt = String(fields.prompt ?? '');
+
+  const clientAspectId = resolveOutputAspectId(fields.aspect);
+  const scene =
+    company === COMPANY_IDS.BOLIDEN && sceneId ? BOLIDEN_SCENE_LIBRARY[sceneId] || null : null;
+  const outputAspectId = scene?.nativeAspect
+    ? resolveOutputAspectId(scene.nativeAspect)
+    : clientAspectId;
+  const aspectPreset = getOutputAspectPreset(outputAspectId);
+  const aspectOverridden = outputAspectId !== clientAspectId;
+
+  const personBrief =
+    company === COMPANY_IDS.BOLIDEN
+      ? await describePersonBrief(fileMime, fileBuf, reqId, log, geminiApiKey)
+      : null;
+
+  const sceneImageBuf = scene
+    ? await loadPublicImageSafe(publicDir, scene.imagePath, (level, msg, meta) =>
+        log(reqId, level, msg, meta)
+      )
+    : null;
+  if (scene && !sceneImageBuf) {
+    log(reqId, 'warn', 'scene.image.fallback', { company, sceneId });
+  }
+
+  const ctx = {
+    company,
+    sceneId,
+    scene,
+    originalPrompt,
+    personBrief,
+    aspectPreset,
+    selfie: { mime: fileMime || 'image/jpeg', buf: fileBuf },
+    sceneImage: sceneImageBuf ? { mime: 'image/jpeg', buf: sceneImageBuf } : null,
+    geminiApiKey,
+    reqId,
+    log,
+  };
+
+  return { ctx, clientAspectId, aspectOverridden };
 }
 
 export async function runEditAndSharePipeline({
@@ -323,8 +320,8 @@ export async function runEditAndSharePipeline({
   const clientMode = fields.mode === 'mobile' ? 'mobile' : 'booth';
   const company = resolveCompanyId(String(fields.company ?? ''));
   const sceneId = String(fields.sceneId ?? '').trim() || null;
-
   const originalPrompt = String(fields.prompt ?? '');
+
   if (company !== COMPANY_IDS.BOLIDEN && !originalPrompt) {
     return { ok: false, status: 400, body: { error: 'Missing prompt' } };
   }
@@ -332,72 +329,102 @@ export async function runEditAndSharePipeline({
     return { ok: false, status: 400, body: { error: 'Missing sceneId for boliden' } };
   }
 
-  const outputAspectId = resolveOutputAspectId(fields.aspect);
-  const aspectPreset = getOutputAspectPreset(outputAspectId);
-  const personBrief =
-    company === COMPANY_IDS.BOLIDEN
-      ? await describePersonBrief(fileMime, fileBuf, reqId, log, geminiApiKey)
-      : null;
-  const strategy = resolveGenerationStrategy({
-    company,
-    originalPrompt,
-    sceneId,
-    personBrief,
-    qualitySuffix: aspectPreset.qualitySuffix,
-  });
-  const sceneImageBuf = strategy.scene
-    ? await loadPublicImageSafe(publicDir, strategy.scene.imagePath, (level, msg, meta) =>
-        log(reqId, level, msg, meta)
-      )
-    : null;
-  if (strategy.scene && !sceneImageBuf) {
-    log(reqId, 'warn', 'scene.image.fallback', { company, sceneId });
-  }
-  const prompt = sceneImageBuf ? strategy.prompt : strategy.fallbackPrompt;
-
-  log(reqId, 'log', 'gemini.request', {
-    model: 'gemini-2.5-flash-image',
-    mime: fileMime,
-    size: fileSize,
-    promptLength: prompt.length,
-    hasTemplate: Boolean(sceneImageBuf),
-    clientMode,
-    company,
-    sceneId,
-    outputAspect: outputAspectId,
-  });
-
-  const secondaryImages = sceneImageBuf ? [{ mime: 'image/jpeg', buf: sceneImageBuf }] : [];
-  const outImg = await runGeminiEdit({
-    apiKey: geminiApiKey,
-    fileMime,
+  const { ctx, clientAspectId, aspectOverridden } = await buildStrategyContext({
+    fields,
     fileBuf,
-    prompt,
-    referenceImages: secondaryImages,
-    geminiAspectRatio: aspectPreset.geminiAspectRatio,
+    fileMime,
+    publicDir,
+    geminiApiKey,
     reqId,
     log,
   });
 
-  if (!outImg) {
-    log(reqId, 'error', 'gemini.noImage', { prompt: prompt.substring(0, 100) });
+  if (company === COMPANY_IDS.BOLIDEN && sceneId && !ctx.scene) {
+    log(reqId, 'error', 'scene.unknown', { sceneId });
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        error: `Unknown Boliden scene: "${sceneId}". The scene is not registered in BOLIDEN_SCENE_LIBRARY, or the server was started before the scene was added and needs a restart.`,
+        company,
+        sceneId,
+      },
+    };
+  }
+  if (company === COMPANY_IDS.BOLIDEN && ctx.scene && !ctx.sceneImage) {
+    log(reqId, 'error', 'scene.image.unavailable', {
+      sceneId,
+      imagePath: ctx.scene.imagePath,
+    });
+    return {
+      ok: false,
+      status: 400,
+      body: {
+        error: `Scene "${sceneId}" is registered but its image file at "${ctx.scene.imagePath}" could not be read from disk.`,
+        company,
+        sceneId,
+      },
+    };
+  }
+
+  const chosen = selectStrategy(ctx);
+  log(reqId, 'log', 'request.plan', {
+    model: 'gemini-2.5-flash-image',
+    mime: fileMime,
+    size: fileSize,
+    clientMode,
+    company,
+    sceneId,
+    outputAspect: ctx.aspectPreset.id,
+    clientAspect: clientAspectId,
+    aspectOverridden,
+    hasScene: Boolean(ctx.sceneImage),
+    strategy: chosen?.name ?? 'none',
+  });
+
+  if (!chosen) {
     return {
       ok: false,
       status: 422,
       body: {
-        error: 'Model returned no image. The prompt may not be suitable for image generation.',
+        error: `No strategy could handle this request (company="${company}", sceneId="${sceneId ?? ''}"). This is a pipeline configuration bug.`,
+        company,
+        sceneId,
       },
     };
   }
-  log(reqId, 'log', 'gemini.ok', { outMime: outImg.mime, outBytes: outImg.buf.length });
+
+  const result = await runStrategyWithFallback(ctx);
+  if (!result?.image) {
+    return {
+      ok: false,
+      status: 422,
+      body: {
+        error:
+          company === COMPANY_IDS.BOLIDEN
+            ? `All Boliden strategies failed to produce an image for scene "${sceneId}". Check server logs for gemini.noImage finishReason and faceSwap.fail details.`
+            : 'Model returned no image. The prompt may not be suitable for image generation.',
+        company,
+        sceneId,
+      },
+    };
+  }
+
+  const outImg = result.image;
+  log(reqId, 'log', 'gemini.ok', {
+    outMime: outImg.mime,
+    outBytes: outImg.buf.length,
+    strategy: result.strategyName,
+  });
 
   const id = nanoid(10);
   const origin = getOrigin(req);
 
   const extraFields = afterGemini
-    ? await afterGemini({ outImg, id, origin, reqId, log })
+    ? await afterGemini({ outImg, id, origin, reqId, log, strategy: result.strategyName })
     : {};
 
+  const aspectPreset = ctx.aspectPreset;
   let imageUrl;
   let outMime = outImg.mime;
   let pathValue;
@@ -482,6 +509,7 @@ export async function runEditAndSharePipeline({
       path: pathValue,
       shareUrl,
       qrDataUrl,
+      strategy: result.strategyName,
       ...extraFields,
     },
   };

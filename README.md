@@ -102,6 +102,30 @@ Set these in your Vercel project settings:
 
 - **BLOB_READ_WRITE_TOKEN** - Vercel Blob storage token
 
+### Optional Environment Variables
+
+- **REPLICATE_API_TOKEN** - Replicate API token. When set, Boliden scenes use a
+  two-pass pipeline: Gemini generates the scene with a generic worker, then
+  Replicate's `cdingram/face-swap` (InsightFace) replaces the face with the
+  user's actual face. This dramatically improves identity fidelity at the cost
+  of one extra HTTP call per request (~3–6s). When unset, Boliden scenes fall
+  back transparently to the single-pass Gemini composite.
+- **REPLICATE_FACE_SWAP_MODEL** - Override the face-swap model version
+  reference (default: pinned version of `cdingram/face-swap`).
+
+### Generation Strategies
+
+The image pipeline uses a strategy pattern (`api/strategies/`):
+
+- `two-pass-face-swap` - Boliden + `REPLICATE_API_TOKEN` set (default when
+  available). Highest identity fidelity.
+- `single-pass-gemini` - Boliden fallback when no Replicate token, or when a
+  scene opts out via `useFaceSwap: false` in `public/shared/company-scenes.js`.
+- `default` - Non-Boliden flow. Plain prompt + selfie through Gemini.
+
+The selector tries strategies in priority order and falls back automatically
+if an earlier strategy fails to produce an image.
+
 ### Deployment Steps
 
 1. Install Vercel CLI (if not already installed):

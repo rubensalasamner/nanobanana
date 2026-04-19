@@ -5,6 +5,7 @@ import Busboy from 'busboy';
 import { nanoid } from 'nanoid';
 
 import { put as blobPut, list as blobList, del as blobDel } from './storage.js';
+import { isFaceSwapAvailable } from './faceSwap.js';
 import {
   handleShareDownload,
   performBlobCleanup,
@@ -88,6 +89,10 @@ async function handleDiag(_req, res) {
     hasKey: Boolean(process.env.GEMINI_API_KEY),
     uploadTarget: UPLOAD_TARGET,
     model: 'gemini-2.5-flash-image',
+    faceSwap: {
+      enabled: isFaceSwapAvailable(),
+      model: process.env.REPLICATE_FACE_SWAP_MODEL || 'cdingram/face-swap (pinned)',
+    },
     vercelDeploymentId: process.env.VERCEL_DEPLOYMENT_ID || null,
     vercelGitCommitSha: process.env.VERCEL_GIT_COMMIT_SHA || null,
     vercelRegion: process.env.VERCEL_REGION || null,

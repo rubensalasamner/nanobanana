@@ -19,6 +19,7 @@ import {
   runEditAndSharePipeline,
   runEditCore,
 } from './api/requestHandlers.js';
+import { isFaceSwapAvailable } from './api/faceSwap.js';
 
 // Exit early if running on Vercel (should not happen, but safety check)
 if (process.env.VERCEL) {
@@ -121,6 +122,10 @@ app.get('/diag', (_req, res) => {
     hasKey: Boolean(process.env.GEMINI_API_KEY),
     model: 'gemini-2.5-flash-image',
     uploadTarget: UPLOAD_TARGET,
+    faceSwap: {
+      enabled: isFaceSwapAvailable(),
+      model: process.env.REPLICATE_FACE_SWAP_MODEL || 'cdingram/face-swap (pinned)',
+    },
   });
 });
 
@@ -257,4 +262,9 @@ const port = Number(process.env.PORT || 3000);
 app.listen(port, () => {
   console.log(`Kiosk running at http://localhost:${port}`);
   console.log(`Has GEMINI_API_KEY: ${Boolean(process.env.GEMINI_API_KEY)}`);
+  console.log(
+    `Face-swap (two-pass) ${isFaceSwapAvailable() ? 'ENABLED' : 'disabled'} — REPLICATE_API_TOKEN ${
+      isFaceSwapAvailable() ? 'present' : 'missing'
+    }`
+  );
 });

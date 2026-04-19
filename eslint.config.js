@@ -28,7 +28,10 @@ export default [
   },
 
   // Node/server
-  { files: ["server.js", "api/**/*.js"], languageOptions: { globals: globals.node } },
+  {
+    files: ["server.js", "api/**/*.js", "scripts/**/*.{js,mjs,cjs}"],
+    languageOptions: { globals: globals.node },
+  },
 
   // Browser/client
   { files: ["public/**/*.js"], languageOptions: { globals: globals.browser } },

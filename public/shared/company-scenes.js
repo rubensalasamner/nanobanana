@@ -8,34 +8,69 @@ const BOLIDEN_SCENE_DATA = [
     id: 'underground-drill',
     label: 'Underground drilling',
     imagePath: 'assets/images/boliden/drilling-at-zinkgruvan.jpeg',
+    nativeAspect: '16:9',
     ppeHint: 'Hard hat with mounted lamp, reflective yellow safety jacket, work gloves.',
     promptHint:
       'The scene is an underground mine with harsh artificial work-lights and dark rock walls. The photograph should look like it was taken in this low-light environment — all skin tones, shadows, and highlights should match the underground lighting naturally.',
+    placementHint:
+      'Place the new person standing on the left side of the tunnel in the background, against the rock wall behind the existing crouched worker and the drill rig. They observe the work from a short distance, never in front of the existing worker and never obstructing the drill equipment.',
   },
   {
     id: 'tunnel-shift',
     label: 'Tunnel shift',
     imagePath: 'assets/images/boliden/mining-raw.jpg',
+    nativeAspect: '16:9',
     ppeHint: 'Helmet, high-visibility outerwear, utility belt, rugged boots.',
     promptHint:
       'The scene is an underground tunnel with industrial lighting. The photograph should look like it was taken in this environment — all skin tones and shadows should match the tunnel lighting.',
+    placementHint:
+      'Place the new person in the mid-ground of the tunnel, off to the left or right side (not centered in the tunnel opening), at the same depth as any existing workers or equipment already visible. They should look like part of a shift on site, not the subject of a portrait.',
   },
   {
     id: 'vehicle-in-the-mine',
     label: 'Vehicle in the mine',
     imagePath: 'assets/images/boliden/vehicle-mine.jpeg',
+    nativeAspect: '16:9',
     ppeHint: 'Industrial PPE matching underground mine operations, keep high-visibility details.',
     promptHint:
       'The scene is an underground mine near heavy machinery with work-lights. The photograph should look like it was taken in this environment.',
+    placementHint:
+      'Place the new person beside or slightly behind the vehicle, in the mid-ground, to the left or right side of the frame — never in front of the vehicle and never blocking the camera\'s view of the machinery. Match the scale of any existing workers already visible.',
+  },
+  {
+    id: 'coworker-with-machine',
+    label: 'Coworker with machine',
+    imagePath: 'assets/images/boliden/coworker-with-machine.jpeg',
+    nativeAspect: '16:9',
+    replaceReferenceSubject: true,
+    ppeHint:
+      'Neon hi-vis shirt with reflective stripes, hard hat with headlamp, safety glasses, ear protection, chin strap — match what is visible in the reference.',
+    promptHint:
+      'Underground mine beside a yellow industrial vehicle with bright work-lights and dark rock. Harsh mixed lighting from machine LEDs and the headlamp — skin tones and shadows must match that environment.',
   },
   {
     id: 'water-samples',
     label: 'Water samples',
     imagePath: 'assets/images/boliden/water-samples.jpeg',
+    nativeAspect: '16:9',
     ppeHint:
       'High-visibility jacket with reflective stripes, helmet/hard hat (with headlamp if present), safety glasses, gloves, sturdy work boots.',
     promptHint:
       'The scene is outdoors by a lake in overcast daylight. The person should be standing on the shoreline near the sampling activity, without blocking the existing worker or equipment.',
+    placementHint:
+      'Place the new person on the shoreline on the left or right third of the frame, clearly beside or slightly behind the existing workers already sampling water — at matching scale and depth, never closer to the camera than them, never larger than them in frame.',
+  },
+  {
+    id: 'coffee-break',
+    label: 'Coffee break',
+    imagePath: 'assets/images/boliden/coffee-break.jpeg',
+    nativeAspect: '16:9',
+    ppeHint:
+      'Neon high-visibility jacket and trousers with navy panels and silver reflective stripes, yellow hard hat with headlamp if others wear one, work boots, radio on belt — match the crew.',
+    promptHint:
+      'The scene is an indoor mine-site canteen or break room: bright cool fluorescent light, white walls, utilitarian tables and chairs. The photograph should feel like a candid work break — relaxed, social, same lighting on faces and gear as the rest of the room.',
+    placementHint:
+      'Place the new person at a table or standing beside one in the mid-ground, left or right of centre — with coworkers at similar scale, never blocking the main group at the table and never unnaturally large in frame.',
   },
 ];
 

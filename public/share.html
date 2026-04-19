@@ -117,6 +117,7 @@
       .share-image-container {
         width: min(420px, 90vw);
         aspect-ratio: 1 / 1;
+        max-height: 75vh;
         border-radius: 32px;
         background: transparent;
         position: relative;
@@ -126,7 +127,7 @@
       .share-image-container img {
         width: 100%;
         height: 100%;
-        object-fit: cover;
+        object-fit: contain;
         border-radius: 32px;
         background: transparent;
       }
@@ -314,6 +315,13 @@
           );
       } else {
         photoEl.src = imageUrl;
+        const container = photoEl.parentElement;
+        const applyAspect = () => {
+          const { naturalWidth: w, naturalHeight: h } = photoEl;
+          if (container && w && h) container.style.aspectRatio = `${w} / ${h}`;
+        };
+        if (photoEl.complete && photoEl.naturalWidth) applyAspect();
+        else photoEl.addEventListener('load', applyAspect, { once: true });
         const ext = mime === 'image/png' ? 'png' : mime === 'image/jpeg' ? 'jpg' : 'webp';
         const filename = `booth-${id}.${ext}`;
 

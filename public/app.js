@@ -772,6 +772,8 @@ function retake() {
   if (resultPhoto) {
     resultPhoto.classList.add('hidden');
     resultPhoto.removeAttribute('src');
+    const stage = resultPhoto.closest('.result-stage');
+    if (stage) stage.style.aspectRatio = '';
   }
   updateResultButtons();
   showStep('camera');
@@ -1017,6 +1019,16 @@ function renderApplySuccess(out) {
   if (resultPhoto) {
     resultPhoto.src = out.imageUrl;
     resultPhoto.classList.remove('hidden');
+    const stage = resultPhoto.closest('.result-stage');
+    const applyAspect = () => {
+      const { naturalWidth: w, naturalHeight: h } = resultPhoto;
+      if (stage && w && h) stage.style.aspectRatio = `${w} / ${h}`;
+    };
+    if (resultPhoto.complete && resultPhoto.naturalWidth) {
+      applyAspect();
+    } else {
+      resultPhoto.addEventListener('load', applyAspect, { once: true });
+    }
   }
   attachResultActions(out);
   apiStatus.textContent = appMode === APP_MODES.MOBILE ? 'Done. Your image is ready.' : 'Done. Scan the QR to open your photo.';
