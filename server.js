@@ -9,20 +9,16 @@ import { promises as fsp } from 'node:fs';
 import express from 'express';
 import multer from 'multer';
 import dotenv from 'dotenv';
-import { GoogleGenAI } from '@google/genai';
 import { nanoid } from 'nanoid';
-import QRCode from 'qrcode';
-import sharp from 'sharp';
 
 import {
-  BOLIDEN_SCENE_LIBRARY,
-  COMPANY_IDS,
-  resolveCompany as resolveCompanyId,
-} from './public/shared/company-scenes.js';
-import {
-  getOutputAspectPreset,
-  resolveOutputAspectId,
-} from './public/shared/output-aspect.js';
+  cleanupLocalShareFiles,
+  extFromMime,
+  getOrigin,
+  handleShareDownload,
+  runEditAndSharePipeline,
+  runEditCore,
+} from './api/requestHandlers.js';
 
 // Exit early if running on Vercel (should not happen, but safety check)
 if (process.env.VERCEL) {
@@ -40,29 +36,23 @@ const SERVER_STARTED_AT = new Date().toISOString();
 const app = express();
 app.set('trust proxy', true);
 
-// --- directories ---
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const SHARES_DIR = path.join(PUBLIC_DIR, 'shares');
 const DEBUG_DIR = path.join(SHARES_DIR, 'debug');
-// Only create directory if it doesn't exist
 try {
   fs.mkdirSync(SHARES_DIR, { recursive: true });
   fs.mkdirSync(DEBUG_DIR, { recursive: true });
 } catch (e) {
-  // Directory might already exist, ignore error
   if (e.code !== 'EEXIST') throw e;
 }
 
-// --- config ---
 const UPLOAD_TARGET = (process.env.UPLOAD_TARGET || 'filesystem').toLowerCase(); // filesystem | dataurl
-const MAX_UPLOAD_BYTES = 4.3 * 1024 * 1024;
 
-// --- helpers ---
-function getOrigin(req) {
-  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
-  const host = req.headers['x-forwarded-host'] || req.get('host');
-  return `${proto}://${host}`;
+function log(reqId, level, msg, meta = {}) {
+  const entry = { ts: new Date().toISOString(), reqId, level, msg, ...meta };
+  (console[level] || console.log)(JSON.stringify(entry));
 }
+
 function findExistingSharePath(id) {
   for (const ext of ['webp', 'jpg', 'png']) {
     const p = path.join(SHARES_DIR, `${id}.${ext}`);
@@ -71,136 +61,22 @@ function findExistingSharePath(id) {
   return null;
 }
 
-function getPathnameFromUrl(u) {
-  try {
-    return new URL(u).pathname.slice(1);
-  } catch {
-    return null;
-  }
+async function readLocalShare(req, src) {
+  const u = new URL(src);
+  const origin = getOrigin(req);
+  if (u.origin !== origin || !u.pathname.startsWith('/shares/')) return null;
+  const rel = path.normalize(u.pathname.slice(1)).replace(/^(\.\.(\/|\\|$))+/, '');
+  if (!rel.startsWith('shares/')) return null;
+  const filePath = path.join(PUBLIC_DIR, ...rel.split('/'));
+  if (!filePath.startsWith(SHARES_DIR)) return null;
+  const buffer = await fsp.readFile(filePath);
+  const ext = path.extname(filePath).slice(1).toLowerCase();
+  const contentType =
+    ext === 'webp' ? 'image/webp' : ext === 'png' ? 'image/png' : 'image/jpeg';
+  const filename = path.basename(filePath);
+  return { buffer, contentType, filename };
 }
 
-function isAllowedShareDownloadSrc(src, req) {
-  let u;
-  try {
-    u = new URL(src);
-  } catch {
-    return false;
-  }
-  if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
-
-  let reqHost;
-  try {
-    reqHost = new URL(getOrigin(req)).hostname;
-  } catch {
-    return false;
-  }
-
-  if (u.hostname === reqHost) {
-    return u.pathname.startsWith('/shares/') && !u.pathname.includes('..');
-  }
-  if (u.hostname.endsWith('.public.blob.vercel-storage.com')) return true;
-  const r2 = process.env.R2_PUBLIC_URL;
-  if (r2) {
-    try {
-      if (new URL(r2).hostname === u.hostname) return true;
-    } catch {
-      /* ignore */
-    }
-  }
-  return false;
-}
-
-function extFromMime(mime) {
-  if (mime === 'image/webp') return 'webp';
-  if (mime === 'image/png') return 'png';
-  return 'jpg';
-}
-
-async function loadPublicImageSafe(relativePath) {
-  try {
-    const imagePath = path.join(PUBLIC_DIR, ...relativePath.split('/'));
-    return await fsp.readFile(imagePath);
-  } catch (err) {
-    console.warn('Scene image missing:', err?.message);
-    return null;
-  }
-}
-
-async function describePersonAppearance(fileMime, fileBuf) {
-  try {
-    const resp = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: [
-        {
-          text: 'Describe this person\'s physical appearance in one concise sentence. Include: hair color and style, eye color, face shape, skin tone, approximate age range, and any distinctive features such as glasses, beard, or freckles. Be specific and objective. Do not describe clothing or background.',
-        },
-        {
-          inlineData: { mimeType: fileMime || 'image/jpeg', data: fileBuf.toString('base64') },
-        },
-      ],
-    });
-    const text = resp?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-    if (text) {
-      console.log('Person description:', text);
-      return text;
-    }
-    console.warn('Person description: empty response');
-    return null;
-  } catch (err) {
-    console.warn('Person description failed:', err?.message || err);
-    return null;
-  }
-}
-
-function buildBolidenPrompt(scene, personDescription, qualitySuffix) {
-  const identityLine = personDescription
-    ? `The person from image 1 looks like: ${personDescription}. The generated person must match this appearance — re-create these exact features naturally within the scene's lighting.`
-    : 'The person is recognizably the same individual as in image 1 — same face shape, hair, eyes, skin tone, and overall appearance. Every part of the person is lit consistently by the scene\'s own lighting.';
-
-  const prompt = [
-    `Image 1: Selfie of a person — this is the identity reference.`,
-    `Image 2: Photograph of a Boliden "${scene.label}" work environment.`,
-    `Create a professional on-site photograph of the person from image 1 working in the environment from image 2. The result should look like a colleague took this photo of them at work.`,
-    scene.promptHint || '',
-    identityLine,
-    `The person is wearing appropriate PPE for this work environment: ${scene.ppeHint}`,
-    'Keep existing people and environment from image 2 unchanged. Add the person from image 1 as an additional worker.',
-    'Natural, proportional body (head-to-body ratio ~1:7), clearly visible, facing the viewer.',
-    'Do not alter or swap any existing faces in image 2. No text, watermarks, or logos.',
-    qualitySuffix.trim(),
-  ].filter(Boolean).join(' ');
-
-  const fallbackIdentityLine = personDescription
-    ? `The person from image 1 looks like: ${personDescription}. The generated person must match this appearance — re-create these exact features naturally within the environment's lighting.`
-    : 'The person is recognizably the same individual as in image 1 — same face shape, hair, eyes, skin tone, and overall appearance. Every part of the person is lit consistently by the environment.';
-
-  const fallbackPrompt = [
-    'Image 1: Selfie of a person — this is the identity reference.',
-    `Create a professional on-site photograph of the person from image 1 working in a Boliden "${scene.label}" environment.`,
-    scene.promptHint || '',
-    fallbackIdentityLine,
-    `The person is wearing appropriate PPE: ${scene.ppeHint}`,
-    'Natural, proportional body (head-to-body ratio ~1:7), clearly visible, facing the viewer.',
-    'No text, watermarks, or logos.',
-    qualitySuffix.trim(),
-  ].filter(Boolean).join(' ');
-
-  return { prompt, fallbackPrompt };
-}
-
-function resolveGenerationStrategy({ company, originalPrompt, sceneId, personDescription, qualitySuffix }) {
-  if (company === COMPANY_IDS.BOLIDEN) {
-    const scene = sceneId ? BOLIDEN_SCENE_LIBRARY[sceneId] : null;
-    if (scene) {
-      const { prompt, fallbackPrompt } = buildBolidenPrompt(scene, personDescription, qualitySuffix);
-      return { prompt, fallbackPrompt, scene };
-    }
-  }
-  const prompt = `${originalPrompt}${qualitySuffix}`;
-  return { prompt, fallbackPrompt: prompt, scene: null };
-}
-
-// --- uploads ---
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 15 * 1024 * 1024 },
@@ -210,13 +86,11 @@ const upload = multer({
   },
 });
 
-// --- basic request logger ---
 app.use((req, _res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   next();
 });
 
-// --- static files ---
 app.use(
   express.static(PUBLIC_DIR, {
     setHeaders: (res, filePath) => {
@@ -227,7 +101,6 @@ app.use(
   })
 );
 
-// Serve /shares with strong caching (filenames are content-addressed by id+ext)
 app.use(
   '/shares',
   express.static(SHARES_DIR, {
@@ -235,7 +108,6 @@ app.use(
   })
 );
 
-// --- health & diagnostics ---
 app.get('/healthz', (_req, res) => res.json({ ok: true }));
 app.get('/diag', (_req, res) => {
   const explicitDeployStamp =
@@ -252,316 +124,78 @@ app.get('/diag', (_req, res) => {
   });
 });
 
-// --- Gemini client ---
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-
-/**
- * Load the black 4x6 aspect ratio template image (blackbg.png)
- */
-async function load4x6BlackImage() {
-  try {
-    const imagePath = path.join(PUBLIC_DIR, 'assets', 'images', 'blackbg.png');
-    const imageBuffer = await fsp.readFile(imagePath);
-    return imageBuffer;
-  } catch (err) {
-    console.error('Failed to load blackbg.png:', err);
-    throw new Error('Failed to load template image');
-  }
-}
-
-async function runGeminiEdit(
-  fileMime,
-  fileBuf,
-  prompt,
-  referenceImages = [],
-  geminiAspectRatio = '1:1'
-) {
-  // Build contents array with prompt and images
-  const contents = [{ text: prompt }];
-
-  // Add user's image as image 1
-  contents.push({
-    inlineData: { mimeType: fileMime || 'image/jpeg', data: fileBuf.toString('base64') },
-  });
-
-  // Add reference images (scene/background) if provided
-  for (const ref of referenceImages) {
-    if (!ref?.buffer) continue;
-    contents.push({
-      inlineData: { mimeType: ref.mime || 'image/jpeg', data: ref.buffer.toString('base64') },
-    });
-  }
-
-  const resp = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-image',
-    contents,
-    config: {
-      temperature: 0.2,
-      seed: 42,
-      imageConfig: {
-        aspectRatio: geminiAspectRatio,
-      },
-    },
-  });
-  return extractImagePart(resp);
-}
-
-// --- helper: extract first image from a generateContent response ---
-function extractImagePart(resp) {
-  const candidates = resp?.candidates || [];
-  for (const c of candidates) {
-    const parts = c?.content?.parts || [];
-    for (const p of parts) {
-      if (p?.inlineData?.data) {
-        const mime = p.inlineData.mimeType || 'image/png';
-        const b64 = p.inlineData.data;
-        return { mime, buffer: Buffer.from(b64, 'base64') };
-      }
-    }
-  }
-  return null;
-}
-
-// --- /api/share-download: same-origin download for cross-origin share URLs (e.g. Vercel Blob) ---
-app.get('/api/share-download', async (req, res) => {
-  const src = typeof req.query.src === 'string' ? req.query.src : '';
-  if (!src) return res.status(400).json({ error: 'Missing src' });
-  if (!isAllowedShareDownloadSrc(src, req)) return res.status(403).json({ error: 'Forbidden' });
-
-  try {
-    const u = new URL(src);
-    const origin = getOrigin(req);
-    if (u.origin === origin && u.pathname.startsWith('/shares/')) {
-      const rel = path.normalize(u.pathname.slice(1)).replace(/^(\.\.(\/|\\|$))+/, '');
-      if (!rel.startsWith('shares/')) return res.status(403).json({ error: 'Forbidden' });
-      const filePath = path.join(PUBLIC_DIR, ...rel.split('/'));
-      if (!filePath.startsWith(SHARES_DIR)) return res.status(403).json({ error: 'Forbidden' });
-      const buf = await fsp.readFile(filePath);
-      const ext = path.extname(filePath).slice(1).toLowerCase();
-      const ct =
-        ext === 'webp' ? 'image/webp' : ext === 'png' ? 'image/png' : 'image/jpeg';
-      const base = path.basename(filePath);
-      res.setHeader('Content-Type', ct);
-      res.setHeader('Content-Disposition', `attachment; filename="${base}"`);
-      return res.status(200).send(buf);
-    }
-
-    const r = await fetch(src, { redirect: 'follow' });
-    if (!r.ok) return res.status(502).json({ error: 'Upstream error' });
-    const ct = r.headers.get('content-type') || 'application/octet-stream';
-    let pathname;
-    try {
-      pathname = new URL(src).pathname;
-    } catch {
-      pathname = '';
-    }
-    const fromUrl = pathname.split('/').pop();
-    const safeName = (fromUrl && fromUrl.includes('.') ? fromUrl : 'nanobanana-image.jpg').replace(
-      /[^a-zA-Z0-9._-]/g,
-      '_'
-    );
-    res.setHeader('Content-Type', ct.startsWith('image/') ? ct : 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
-    res.status(200).send(Buffer.from(await r.arrayBuffer()));
-  } catch (err) {
-    console.error('share-download failed:', err);
-    res.status(500).json({ error: 'Download failed' });
-  }
+app.get('/api/share-download', (req, res) => {
+  const reqId = nanoid(8);
+  return handleShareDownload(req, res, { reqId, log, readLocalShare });
 });
 
-// --- /api/edit: returns the edited image binary directly ---
 app.post('/api/edit', upload.single('image'), async (req, res) => {
   try {
     if (!process.env.GEMINI_API_KEY) {
-      console.warn('GEMINI_API_KEY is missing');
       return res.status(500).json({ error: 'Missing GEMINI_API_KEY' });
     }
-    if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
-
-    const prompt = String(req.body.prompt ?? '');
-    if (!prompt) return res.status(400).json({ error: 'Missing prompt' });
-
-    const fileSize = req.file.buffer.length;
-    if (fileSize > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Image too large' });
-
-    console.log(`Editing image (${req.file.mimetype}, ${fileSize} bytes) with prompt: "${prompt}"`);
-
-    const aspectPreset = getOutputAspectPreset(resolveOutputAspectId(req.body.aspect));
-    const img = await runGeminiEdit(
-      req.file.mimetype,
-      req.file.buffer,
-      prompt,
-      [],
-      aspectPreset.geminiAspectRatio
-    );
-    if (!img) {
-      console.warn('No image in response from Gemini');
-      return res.status(422).json({ error: 'Model returned no image' });
-    }
-
+    const reqId = nanoid(8);
+    const result = await runEditCore({
+      fields: req.body,
+      fileBuf: req.file?.buffer,
+      fileMime: req.file?.mimetype,
+      fileSize: req.file?.buffer?.length ?? 0,
+      geminiApiKey: process.env.GEMINI_API_KEY,
+      reqId,
+      log,
+    });
+    if (!result.ok) return res.status(result.status).json(result.body);
     res
-      .set('Content-Type', img.mime.startsWith('image/') ? img.mime : 'image/png')
-      .send(img.buffer);
+      .set(
+        'Content-Type',
+        result.image.mime.startsWith('image/') ? result.image.mime : 'image/png'
+      )
+      .send(result.image.buf);
   } catch (err) {
     console.error('Gemini request failed:', err);
     res.status(500).json({ error: 'Gemini request failed', detail: String(err?.message || err) });
   }
 });
 
-// --- /api/edit-and-share: edit, save to /shares, return urls + QR ---
 app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
   try {
     if (!process.env.GEMINI_API_KEY) {
       return res.status(500).json({ error: 'Missing GEMINI_API_KEY' });
     }
-    if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
-
-    const clientMode = req.body.mode === 'mobile' ? 'mobile' : 'booth';
-    const company = resolveCompanyId(String(req.body.company ?? ''));
-    const sceneId = String(req.body.sceneId ?? '').trim() || null;
-
-    const originalPrompt = String(req.body.prompt ?? '');
-    if (company !== COMPANY_IDS.BOLIDEN && !originalPrompt) {
-      return res.status(400).json({ error: 'Missing prompt' });
-    }
-    if (company === COMPANY_IDS.BOLIDEN && !sceneId) {
-      return res.status(400).json({ error: 'Missing sceneId for boliden' });
-    }
-
-    const fileSize = req.file.buffer.length;
-    if (fileSize > MAX_UPLOAD_BYTES) return res.status(413).json({ error: 'Image too large' });
-
-    const outputAspectId = resolveOutputAspectId(req.body.aspect);
-    const aspectPreset = getOutputAspectPreset(outputAspectId);
-    const personDescription = company === COMPANY_IDS.BOLIDEN
-      ? await describePersonAppearance(req.file.mimetype, req.file.buffer)
-      : null;
-    const strategy = resolveGenerationStrategy({
-      company,
-      originalPrompt,
-      sceneId,
-      personDescription,
-      qualitySuffix: aspectPreset.qualitySuffix,
+    const reqId = nanoid(8);
+    const result = await runEditAndSharePipeline({
+      req,
+      reqId,
+      log,
+      fields: req.body,
+      fileBuf: req.file?.buffer,
+      fileMime: req.file?.mimetype,
+      fileSize: req.file?.buffer?.length ?? 0,
+      publicDir: PUBLIC_DIR,
+      uploadTarget: UPLOAD_TARGET === 'dataurl' ? 'dataurl' : 'filesystem',
+      geminiApiKey: process.env.GEMINI_API_KEY,
+      sharesDir: SHARES_DIR,
+      pathJoin: path.join,
+      afterGemini: async ({ outImg, id, origin }) => {
+        const rawExt = extFromMime(outImg.mime);
+        const rawFilename = `${id}-gemini-raw.${rawExt}`;
+        const rawFilePath = path.join(DEBUG_DIR, rawFilename);
+        await fsp.writeFile(rawFilePath, outImg.buf);
+        const rawStoredPath = `shares/debug/${rawFilename}`;
+        return {
+          debugRawImageUrl: `${origin}/${rawStoredPath}`,
+          debugRawPath: rawStoredPath,
+        };
+      },
     });
-    const sceneImageBuffer = strategy.scene
-      ? await loadPublicImageSafe(strategy.scene.imagePath)
-      : null;
-    if (strategy.scene && !sceneImageBuffer) {
-      console.warn(`Boliden scene image missing for sceneId=${sceneId}, falling back to default flow`);
-    }
-    const prompt = sceneImageBuffer ? strategy.prompt : strategy.fallbackPrompt;
-
-    console.log(`Editing (and sharing) image with prompt: "${originalPrompt}"`);
-
-    const secondaryImages = sceneImageBuffer
-      ? [{ mime: 'image/jpeg', buffer: sceneImageBuffer }]
-      : [];
-    const img = await runGeminiEdit(
-      req.file.mimetype,
-      req.file.buffer,
-      prompt,
-      secondaryImages,
-      aspectPreset.geminiAspectRatio
-    );
-    if (!img) {
-      console.warn('No image returned by Gemini');
-      return res.status(422).json({ error: 'Model returned no image' });
-    }
-
-    const id = nanoid(10);
-    const origin = getOrigin(req);
-    const rawExt = extFromMime(img.mime);
-    const rawFilename = `${id}-gemini-raw.${rawExt}`;
-    const rawFilePath = path.join(DEBUG_DIR, rawFilename);
-    await fsp.writeFile(rawFilePath, img.buffer);
-    const rawStoredPath = `shares/debug/${rawFilename}`;
-    const rawImageUrl = `${origin}/${rawStoredPath}`;
-    console.log(`Saved raw Gemini output to ${rawStoredPath}`);
-
-    let imageUrl;
-    let outMime = img.mime;
-    let outBuffer = img.buffer;
-    let storedPath = null;
-
-    if (UPLOAD_TARGET === 'dataurl') {
-      imageUrl = `data:${outMime};base64,${outBuffer.toString('base64')}`;
-      console.log('Returning data URL image (UPLOAD_TARGET=dataurl)');
-    } else {
-      let ext = extFromMime(outMime);
-
-      if (clientMode !== 'mobile') {
-        const metadata = await sharp(outBuffer).metadata();
-        console.log(
-          `Resizing image from ${metadata.width}x${metadata.height} to ${aspectPreset.exportWidth}x${aspectPreset.exportHeight}`
-        );
-
-        let preResize = await sharp(outBuffer).rotate().toBuffer();
-        try {
-          const trimmed = await sharp(preResize).trim({ threshold: 32 }).toBuffer();
-          const tm = await sharp(trimmed).metadata();
-          if (tm.width >= 64 && tm.height >= 64) {
-            preResize = trimmed;
-            console.log(`Trimmed uniform border; working size ${tm.width}x${tm.height}`);
-          }
-        } catch {
-          /* no trim */
-        }
-
-        const jpegBuffer = await sharp(preResize)
-          .resize(aspectPreset.exportWidth, aspectPreset.exportHeight, {
-            fit: 'cover',
-            position: 'centre',
-          })
-          .jpeg({ quality: 95 })
-          .toBuffer();
-
-        const outputMetadata = await sharp(jpegBuffer).metadata();
-        console.log(`Resized image to ${outputMetadata.width}x${outputMetadata.height}`);
-        outBuffer = jpegBuffer;
-        outMime = 'image/jpeg';
-        ext = 'jpg';
-      } else {
-        console.log(
-          `Skipping resize in mobile mode; preserving generated ${outMime} (${outBuffer.length} bytes)`
-        );
-      }
-
-      const filename = `${id}.${ext}`;
-      const filePath = path.join(SHARES_DIR, filename);
-      await fsp.writeFile(filePath, outBuffer);
-      storedPath = `shares/${filename}`;
-      imageUrl = `${origin}/${storedPath}`;
-    }
-
-    const shareUrl = `${origin}/share.html?imageUrl=${encodeURIComponent(
-      imageUrl
-    )}&id=${id}&mime=${encodeURIComponent(outMime)}`;
-
-    const qrDataUrl = await QRCode.toDataURL(shareUrl, { margin: 1, scale: 6 });
-    const resolvedPath = storedPath || getPathnameFromUrl(imageUrl);
-
-    res.json({
-      ok: true,
-      id,
-      mode: UPLOAD_TARGET,
-      clientMode,
-      company,
-      sceneId,
-      mime: outMime,
-      imageUrl,
-      path: resolvedPath,
-      debugRawImageUrl: rawImageUrl,
-      debugRawPath: rawStoredPath,
-      shareUrl,
-      qrDataUrl,
-    });
+    if (!result.ok) return res.status(result.status).json(result.body);
+    res.json(result.json);
   } catch (err) {
     console.error('edit-and-share failed:', err);
     res.status(500).json({ error: 'Gemini request failed', detail: String(err?.message || err) });
   }
 });
 
-// --- public share page ---
 app.get('/share/:id', async (req, res) => {
   const id = req.params.id.replace(/[^a-zA-Z0-9_-]/g, '');
   const found = findExistingSharePath(id);
@@ -603,34 +237,22 @@ app.get('/share/:id', async (req, res) => {
   `);
 });
 
-// --- OPTIONAL: simple cleanup of old files (24h) ---
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 setInterval(
   async () => {
     try {
-      const files = await fsp.readdir(SHARES_DIR);
-      const now = Date.now();
-      await Promise.all(
-        files.map(async (f) => {
-          if (!/\.(jpg|png|webp)$/i.test(f)) return;
-          const p = path.join(SHARES_DIR, f);
-          const st = await fsp.stat(p);
-          if (now - st.mtimeMs > MAX_AGE_MS) await fsp.unlink(p).catch(() => {});
-        })
-      );
+      await cleanupLocalShareFiles(SHARES_DIR, { maxAgeMs: MAX_AGE_MS });
     } catch (e) {
       console.warn('Cleanup error:', e.message);
     }
   },
   60 * 60 * 1000
-); // hourly
+);
 
-// --- SPA fallback LAST ---
 app.get('*', (_req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, 'index.html'));
 });
 
-// --- start ---
 const port = Number(process.env.PORT || 3000);
 app.listen(port, () => {
   console.log(`Kiosk running at http://localhost:${port}`);

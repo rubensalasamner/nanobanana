@@ -292,22 +292,6 @@ function shouldShowDeployBanner() {
   return appMode === APP_MODES.MOBILE && companyId === COMPANY_IDS.BOLIDEN;
 }
 
-function buildBolidenPrompt(scene) {
-  return [
-    'Use image 1 as the person source and image 2 as the background scene.',
-    'Add the person from image 1 as a separate, full-body subject placed naturally into image 2 with realistic scale, perspective, and lighting.',
-    'Preserve the person identity and face from image 1 on the inserted subject.',
-    `Match PPE and outfit to the work context. ${scene.ppeHint}`,
-    'Keep existing people already present in image 2 unchanged.',
-    'Add only the person from image 1 as the new inserted subject.',
-    'The inserted person from image 1 must be clearly visible in the final image.',
-    'The inserted person should face the viewer/camera, with head and eyes oriented toward the viewer.',
-    'Do not replace, edit, or swap any existing face or head in image 2.',
-    'No face swap. No head replacement.',
-    'No text or watermark.',
-  ].join(' ');
-}
-
 function getPublicAssetUrl(relativePath) {
   // `relativePath` is like: assets/images/boliden/mining-raw.jpg
   return new URL(relativePath, window.location.origin).toString();
@@ -341,7 +325,19 @@ function applyCompanyExperience() {
   });
 
   if (styleTitle) styleTitle.textContent = getStyleTitleDefaultText();
-  if (apiStatus) apiStatus.textContent = 'Take a full-body photo, then choose a Boliden scene.';
+  if (apiStatus) {
+    apiStatus.textContent =
+      'Take a clear selfie of your face and shoulders, then choose a Boliden scene.';
+  }
+
+  const cameraTitleEl = document.querySelector('.camera-title');
+  if (cameraTitleEl) cameraTitleEl.textContent = 'Take a selfie';
+
+  const mobileHintEl = document.querySelector('.mobile-mode-hint');
+  if (mobileHintEl) {
+    mobileHintEl.textContent =
+      'Face the camera straight on, fill the frame with your face and shoulders, and use even lighting. Your body and the work scene are generated for you.';
+  }
 
   grid.innerHTML = '';
   for (const scene of BOLIDEN_SCENES) {
@@ -551,7 +547,10 @@ function setupNativeMobileCameraStep() {
   if (btnSnapText) btnSnapText.textContent = 'Take picture';
   if (btnSnap) btnSnap.disabled = false;
   if (!latestBlob) {
-    camStatus.textContent = 'Use your phone camera and confirm the photo.';
+    camStatus.textContent =
+      companyId === COMPANY_IDS.BOLIDEN
+        ? 'Take a close selfie: face and shoulders, fill the frame, look at the camera.'
+        : 'Use your phone camera and confirm the photo.';
   }
 }
 

@@ -1,0 +1,580 @@
+// Shared HTTP-style handlers and pipeline logic for api/index.js (Vercel) and server.js (local).
+import { readFile, readdir, stat, unlink, writeFile } from 'fs/promises';
+import { join } from 'path';
+
+import { GoogleGenAI } from '@google/genai';
+import { nanoid } from 'nanoid';
+import QRCode from 'qrcode';
+import sharp from 'sharp';
+
+import {
+  COMPANY_IDS,
+  resolveCompany as resolveCompanyId,
+} from '../public/shared/company-scenes.js';
+import {
+  getOutputAspectPreset,
+  resolveOutputAspectId,
+} from '../public/shared/output-aspect.js';
+import {
+  describePersonAppearance,
+  resolveGenerationStrategy,
+} from '../public/shared/boliden-prompt.js';
+
+export const MAX_UPLOAD_BYTES = 4.3 * 1024 * 1024;
+export const ONE_HOUR_MS = 60 * 60 * 1000;
+
+export function getOrigin(req) {
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  return `${proto}://${host}`;
+}
+
+export function getPathnameFromUrl(u) {
+  try {
+    return new URL(u).pathname.slice(1);
+  } catch {
+    return null;
+  }
+}
+
+export function isAllowedShareDownloadSrc(src, req) {
+  let u;
+  try {
+    u = new URL(src);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return false;
+
+  let reqHost;
+  try {
+    reqHost = new URL(getOrigin(req)).hostname;
+  } catch {
+    return false;
+  }
+
+  if (u.hostname === reqHost) {
+    return u.pathname.startsWith('/shares/') && !u.pathname.includes('..');
+  }
+  if (u.hostname.endsWith('.public.blob.vercel-storage.com')) return true;
+  const r2 = process.env.R2_PUBLIC_URL;
+  if (r2) {
+    try {
+      if (new URL(r2).hostname === u.hostname) return true;
+    } catch {
+      /* ignore */
+    }
+  }
+  return false;
+}
+
+export function extFromMime(m) {
+  if (m === 'image/webp') return 'webp';
+  if (m === 'image/png') return 'png';
+  return 'jpg';
+}
+
+export function extractFirstImage(resp) {
+  const candidates = resp?.candidates || [];
+  for (const c of candidates) {
+    const parts = c?.content?.parts || [];
+    for (const p of parts) {
+      if (p?.inlineData?.data) {
+        const mime = p.inlineData.mimeType || 'image/png';
+        const buf = Buffer.from(p.inlineData.data, 'base64');
+        return { mime, buf };
+      }
+    }
+  }
+  return null;
+}
+
+export function getQueryParam(req, name) {
+  const q = req.query?.[name];
+  if (typeof q === 'string' && q) return q;
+  try {
+    return new URL(req.url, 'http://localhost').searchParams.get(name);
+  } catch {
+    return null;
+  }
+}
+
+export async function loadPublicImageSafe(publicDir, relativePath, log) {
+  try {
+    const imagePath = join(publicDir, ...relativePath.split('/'));
+    return await readFile(imagePath);
+  } catch (err) {
+    log?.('warn', 'scene.image.missing', { relativePath, message: err?.message });
+    return null;
+  }
+}
+
+export async function runGeminiEdit({
+  apiKey,
+  fileMime,
+  fileBuf,
+  prompt,
+  referenceImages = [],
+  geminiAspectRatio = '1:1',
+  reqId,
+  log,
+}) {
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const contents = [{ text: prompt }];
+    contents.push({
+      inlineData: { mimeType: fileMime || 'image/jpeg', data: fileBuf.toString('base64') },
+    });
+    for (const ref of referenceImages) {
+      if (!ref?.buf) continue;
+      contents.push({
+        inlineData: { mimeType: ref.mime || 'image/jpeg', data: ref.buf.toString('base64') },
+      });
+    }
+
+    const resp = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents,
+      config: {
+        temperature: 0.2,
+        seed: 42,
+        imageConfig: {
+          aspectRatio: geminiAspectRatio,
+        },
+      },
+    });
+    const result = extractFirstImage(resp);
+    if (!result && resp) {
+      log?.(reqId, 'warn', 'gemini.noImage', {
+        prompt: prompt.substring(0, 100),
+        candidates: resp?.candidates?.length || 0,
+        response: JSON.stringify(resp).substring(0, 500),
+      });
+    }
+    return result;
+  } catch (err) {
+    log?.(reqId, 'error', 'gemini.error', {
+      message: err?.message,
+      prompt: prompt.substring(0, 100),
+    });
+    throw err;
+  }
+}
+
+export async function describePersonBrief(fileMime, fileBuf, reqId, log, apiKey) {
+  const ai = new GoogleGenAI({ apiKey: apiKey || process.env.GEMINI_API_KEY });
+  return describePersonAppearance({
+    ai,
+    fileMime,
+    fileBuf,
+    onSuccess: (text) => log(reqId, 'log', 'describe.ok', { descriptionLength: text.length }),
+    onEmpty: () => log(reqId, 'warn', 'describe.empty'),
+    onError: (err) => log(reqId, 'warn', 'describe.failed', { error: String(err?.message || err) }),
+  });
+}
+
+export async function prepareShareImageForUpload({
+  outImg,
+  clientMode,
+  aspectPreset,
+  reqId,
+  log,
+}) {
+  let uploadBuf = outImg.buf;
+  let contentType = outImg.mime;
+  let ext = extFromMime(outImg.mime);
+  let outMime = outImg.mime;
+
+  if (clientMode !== 'mobile') {
+    const metadata = await sharp(outImg.buf).metadata();
+    log(reqId, 'log', 'resize.input', { width: metadata.width, height: metadata.height });
+
+    let preResize = await sharp(outImg.buf).rotate().toBuffer();
+    try {
+      const trimmed = await sharp(preResize).trim({ threshold: 32 }).toBuffer();
+      const tm = await sharp(trimmed).metadata();
+      if (tm.width >= 64 && tm.height >= 64) {
+        preResize = trimmed;
+        log(reqId, 'log', 'gemini.trim', { w: tm.width, h: tm.height });
+      }
+    } catch {
+      /* uniform border trim not applicable */
+    }
+
+    const jpegBuf = await sharp(preResize)
+      .resize(aspectPreset.exportWidth, aspectPreset.exportHeight, {
+        fit: 'cover',
+        position: 'centre',
+      })
+      .jpeg({ quality: 95 })
+      .toBuffer();
+
+    const outputMetadata = await sharp(jpegBuf).metadata();
+    log(reqId, 'log', 'resize.output', {
+      width: outputMetadata.width,
+      height: outputMetadata.height,
+    });
+
+    uploadBuf = jpegBuf;
+    contentType = 'image/jpeg';
+    ext = 'jpg';
+    outMime = 'image/jpeg';
+  } else {
+    log(reqId, 'log', 'resize.skip.mobile', { mime: outImg.mime, bytes: outImg.buf.length });
+  }
+
+  return { uploadBuf, contentType, ext, outMime };
+}
+
+export async function buildShareUrlAndQr({ origin, id, imageUrl, outMime, clientMode, reqId, log }) {
+  const shareUrl = `${origin}/share.html?imageUrl=${encodeURIComponent(imageUrl)}&id=${id}&mime=${encodeURIComponent(
+    outMime
+  )}`;
+
+  let qrDataUrl = null;
+  if (clientMode !== 'mobile') {
+    const qrStart = Date.now();
+    qrDataUrl = await QRCode.toDataURL(shareUrl, { margin: 1, scale: 6 });
+    log(reqId, 'log', 'qr.ok', { ms: Date.now() - qrStart });
+  } else {
+    log(reqId, 'log', 'qr.skip', { reason: 'mobile-mode' });
+  }
+
+  return { shareUrl, qrDataUrl };
+}
+
+export async function runEditCore({
+  fields,
+  fileBuf,
+  fileMime,
+  fileSize,
+  geminiApiKey,
+  reqId,
+  log,
+}) {
+  if (!fileBuf) {
+    return { ok: false, status: 400, body: { error: "No image uploaded (field 'image')" } };
+  }
+  if (fileSize > MAX_UPLOAD_BYTES) {
+    return { ok: false, status: 413, body: { error: 'Image too large' } };
+  }
+
+  const prompt = String(fields.prompt ?? '');
+  if (!prompt) {
+    return { ok: false, status: 400, body: { error: 'Missing prompt' } };
+  }
+
+  log(reqId, 'log', 'gemini.request', {
+    model: 'gemini-2.5-flash-image',
+    mime: fileMime,
+    size: fileSize,
+    promptLength: prompt.length,
+  });
+  const aspectPreset = getOutputAspectPreset(resolveOutputAspectId(fields.aspect));
+  const outImg = await runGeminiEdit({
+    apiKey: geminiApiKey,
+    fileMime,
+    fileBuf,
+    prompt,
+    referenceImages: [],
+    geminiAspectRatio: aspectPreset.geminiAspectRatio,
+    reqId,
+    log,
+  });
+  if (!outImg) {
+    log(reqId, 'error', 'gemini.noImage', { prompt: prompt.substring(0, 100) });
+    return {
+      ok: false,
+      status: 422,
+      body: {
+        error: 'Model returned no image. The prompt may not be suitable for image generation.',
+      },
+    };
+  }
+
+  log(reqId, 'log', 'gemini.ok', { outMime: outImg.mime, outBytes: outImg.buf.length });
+  return { ok: true, image: outImg };
+}
+
+export async function runEditAndSharePipeline({
+  req,
+  reqId,
+  log,
+  fields,
+  fileBuf,
+  fileMime,
+  fileSize,
+  publicDir,
+  uploadTarget,
+  geminiApiKey,
+  blobPut,
+  blobToken,
+  sharesDir,
+  pathJoin = join,
+  afterGemini,
+}) {
+  if (!fileBuf) {
+    return { ok: false, status: 400, body: { error: "No image uploaded (field 'image')" } };
+  }
+  if (fileSize > MAX_UPLOAD_BYTES) {
+    return { ok: false, status: 413, body: { error: 'Image too large' } };
+  }
+
+  const clientMode = fields.mode === 'mobile' ? 'mobile' : 'booth';
+  const company = resolveCompanyId(String(fields.company ?? ''));
+  const sceneId = String(fields.sceneId ?? '').trim() || null;
+
+  const originalPrompt = String(fields.prompt ?? '');
+  if (company !== COMPANY_IDS.BOLIDEN && !originalPrompt) {
+    return { ok: false, status: 400, body: { error: 'Missing prompt' } };
+  }
+  if (company === COMPANY_IDS.BOLIDEN && !sceneId) {
+    return { ok: false, status: 400, body: { error: 'Missing sceneId for boliden' } };
+  }
+
+  const outputAspectId = resolveOutputAspectId(fields.aspect);
+  const aspectPreset = getOutputAspectPreset(outputAspectId);
+  const personBrief =
+    company === COMPANY_IDS.BOLIDEN
+      ? await describePersonBrief(fileMime, fileBuf, reqId, log, geminiApiKey)
+      : null;
+  const strategy = resolveGenerationStrategy({
+    company,
+    originalPrompt,
+    sceneId,
+    personBrief,
+    qualitySuffix: aspectPreset.qualitySuffix,
+  });
+  const sceneImageBuf = strategy.scene
+    ? await loadPublicImageSafe(publicDir, strategy.scene.imagePath, (level, msg, meta) =>
+        log(reqId, level, msg, meta)
+      )
+    : null;
+  if (strategy.scene && !sceneImageBuf) {
+    log(reqId, 'warn', 'scene.image.fallback', { company, sceneId });
+  }
+  const prompt = sceneImageBuf ? strategy.prompt : strategy.fallbackPrompt;
+
+  log(reqId, 'log', 'gemini.request', {
+    model: 'gemini-2.5-flash-image',
+    mime: fileMime,
+    size: fileSize,
+    promptLength: prompt.length,
+    hasTemplate: Boolean(sceneImageBuf),
+    clientMode,
+    company,
+    sceneId,
+    outputAspect: outputAspectId,
+  });
+
+  const secondaryImages = sceneImageBuf ? [{ mime: 'image/jpeg', buf: sceneImageBuf }] : [];
+  const outImg = await runGeminiEdit({
+    apiKey: geminiApiKey,
+    fileMime,
+    fileBuf,
+    prompt,
+    referenceImages: secondaryImages,
+    geminiAspectRatio: aspectPreset.geminiAspectRatio,
+    reqId,
+    log,
+  });
+
+  if (!outImg) {
+    log(reqId, 'error', 'gemini.noImage', { prompt: prompt.substring(0, 100) });
+    return {
+      ok: false,
+      status: 422,
+      body: {
+        error: 'Model returned no image. The prompt may not be suitable for image generation.',
+      },
+    };
+  }
+  log(reqId, 'log', 'gemini.ok', { outMime: outImg.mime, outBytes: outImg.buf.length });
+
+  const id = nanoid(10);
+  const origin = getOrigin(req);
+
+  const extraFields = afterGemini
+    ? await afterGemini({ outImg, id, origin, reqId, log })
+    : {};
+
+  let imageUrl;
+  let outMime = outImg.mime;
+  let pathValue;
+
+  if (uploadTarget === 'blob') {
+    const prepared = await prepareShareImageForUpload({
+      outImg,
+      clientMode,
+      aspectPreset,
+      reqId,
+      log,
+    });
+    const filename = `shares/${id}.${prepared.ext}`;
+    const putStart = Date.now();
+    const { url } = await blobPut(filename, prepared.uploadBuf, {
+      access: 'public',
+      contentType: prepared.contentType,
+      addRandomSuffix: false,
+      token: blobToken,
+    });
+    log(reqId, 'log', 'blob.put.ok', { filename, ms: Date.now() - putStart, url });
+    imageUrl = url;
+    outMime = prepared.outMime;
+    pathValue = getPathnameFromUrl(imageUrl);
+  } else if (uploadTarget === 'dataurl') {
+    const base64 = `data:${outImg.mime};base64,${outImg.buf.toString('base64')}`;
+    imageUrl = base64;
+    outMime = outImg.mime;
+    log(reqId, 'log', 'share.dataurl.ok', { length: base64.length });
+    pathValue = getPathnameFromUrl(imageUrl);
+  } else if (uploadTarget === 'filesystem') {
+    if (!sharesDir) {
+      return {
+        ok: false,
+        status: 500,
+        body: { error: 'Server misconfigured (sharesDir required for filesystem upload)' },
+      };
+    }
+    const prepared = await prepareShareImageForUpload({
+      outImg,
+      clientMode,
+      aspectPreset,
+      reqId,
+      log,
+    });
+    const filename = `${id}.${prepared.ext}`;
+    const filePath = pathJoin(sharesDir, filename);
+    await writeFile(filePath, prepared.uploadBuf);
+    const storedPath = `shares/${filename}`;
+    imageUrl = `${origin}/${storedPath}`;
+    outMime = prepared.outMime;
+    pathValue = storedPath;
+  } else {
+    return {
+      ok: false,
+      status: 500,
+      body: { error: `Unknown uploadTarget: ${uploadTarget}` },
+    };
+  }
+
+  const { shareUrl, qrDataUrl } = await buildShareUrlAndQr({
+    origin,
+    id,
+    imageUrl,
+    outMime,
+    clientMode,
+    reqId,
+    log,
+  });
+
+  return {
+    ok: true,
+    json: {
+      ok: true,
+      id,
+      mode: uploadTarget,
+      clientMode,
+      company,
+      sceneId,
+      mime: outMime,
+      imageUrl,
+      path: pathValue,
+      shareUrl,
+      qrDataUrl,
+      ...extraFields,
+    },
+  };
+}
+
+export async function handleShareDownload(req, res, { reqId, log, readLocalShare }) {
+  const src = getQueryParam(req, 'src');
+  if (!src) return res.status(400).json({ error: 'Missing src' });
+  if (!isAllowedShareDownloadSrc(src, req)) {
+    log(reqId, 'warn', 'shareDownload.denied', { srcPreview: src.slice(0, 96) });
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  try {
+    if (readLocalShare) {
+      const local = await readLocalShare(req, src);
+      if (local) {
+        res.setHeader('Content-Type', local.contentType);
+        res.setHeader('Content-Disposition', `attachment; filename="${local.filename}"`);
+        return res.status(200).send(local.buffer);
+      }
+    }
+
+    const r = await fetch(src, { redirect: 'follow' });
+    if (!r.ok) {
+      log(reqId, 'warn', 'shareDownload.upstream', { status: r.status });
+      return res.status(502).json({ error: 'Upstream error' });
+    }
+    const ct = r.headers.get('content-type') || 'application/octet-stream';
+    let pathname;
+    try {
+      pathname = new URL(src).pathname;
+    } catch {
+      pathname = '';
+    }
+    const fromUrl = pathname.split('/').pop();
+    const safeName = (fromUrl && fromUrl.includes('.') ? fromUrl : 'nanobanana-image.jpg').replace(
+      /[^a-zA-Z0-9._-]/g,
+      '_'
+    );
+
+    res.setHeader('Content-Type', ct.startsWith('image/') ? ct : 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeName}"`);
+    res.status(200).send(Buffer.from(await r.arrayBuffer()));
+  } catch (e) {
+    log(reqId, 'error', 'shareDownload.fail', { message: e?.message });
+    res.status(500).json({ error: 'Download failed' });
+  }
+}
+
+export async function performBlobCleanup({ blobList, blobDel, token, reqId, log, maxAgeMs = ONE_HOUR_MS }) {
+  const now = Date.now();
+  let removed = 0;
+  let cursor;
+  do {
+    const {
+      blobs,
+      hasMore,
+      cursor: next,
+    } = await blobList({
+      prefix: 'shares/',
+      cursor,
+      token,
+    });
+    cursor = hasMore ? next : undefined;
+
+    for (const b of blobs) {
+      const uploaded = b.uploadedAt ? new Date(b.uploadedAt).getTime() : null;
+      if (uploaded && now - uploaded > maxAgeMs) {
+        await blobDel(b.pathname, { token });
+        removed++;
+      }
+    }
+  } while (cursor);
+
+  log(reqId, 'log', 'cleanup.ok', { removed });
+  return { removed };
+}
+
+export async function cleanupLocalShareFiles(sharesDir, { maxAgeMs, filter = /\.(jpg|png|webp)$/i }) {
+  const files = await readdir(sharesDir);
+  const now = Date.now();
+  let removed = 0;
+  await Promise.all(
+    files.map(async (f) => {
+      if (!filter.test(f)) return;
+      const p = join(sharesDir, f);
+      const st = await stat(p);
+      if (now - st.mtimeMs > maxAgeMs) {
+        await unlink(p).catch(() => {});
+        removed++;
+      }
+    })
+  );
+  return { removed };
+}
