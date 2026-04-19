@@ -39,11 +39,12 @@ function summarizeNoImageResponse(resp) {
     if (typeof p?.text === 'string') return 'text';
     return Object.keys(p || {}).join(',') || 'unknown';
   });
-  const text = parts
-    .map((p) => (typeof p?.text === 'string' ? p.text : null))
-    .filter(Boolean)
-    .join(' | ')
-    .slice(0, 400) || null;
+  const text =
+    parts
+      .map((p) => (typeof p?.text === 'string' ? p.text : null))
+      .filter(Boolean)
+      .join(' | ')
+      .slice(0, 400) || null;
   return {
     finishReason: c0?.finishReason ?? null,
     safetyRatings: c0?.safetyRatings ?? null,

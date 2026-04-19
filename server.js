@@ -20,6 +20,11 @@ import {
   runEditCore,
 } from './api/requestHandlers.js';
 import { isFaceSwapAvailable } from './api/faceSwap.js';
+import {
+  isFaceRestoreEnabled,
+  resolveCodeformerFidelity,
+  resolveFaceRestoreModel,
+} from './api/faceRestore.js';
 
 // Exit early if running on Vercel (should not happen, but safety check)
 if (process.env.VERCEL) {
@@ -126,6 +131,11 @@ app.get('/diag', (_req, res) => {
       enabled: isFaceSwapAvailable(),
       model: process.env.REPLICATE_FACE_SWAP_MODEL || 'cdingram/face-swap (pinned)',
     },
+    faceRestore: {
+      enabled: isFaceRestoreEnabled(),
+      model: resolveFaceRestoreModel(),
+      fidelity: resolveCodeformerFidelity(),
+    },
   });
 });
 
@@ -181,15 +191,31 @@ app.post('/api/edit-and-share', upload.single('image'), async (req, res) => {
       geminiApiKey: process.env.GEMINI_API_KEY,
       sharesDir: SHARES_DIR,
       pathJoin: path.join,
-      afterGemini: async ({ outImg, id, origin }) => {
+      afterGemini: async ({ outImg, id, origin, debugImages }) => {
         const rawExt = extFromMime(outImg.mime);
         const rawFilename = `${id}-gemini-raw.${rawExt}`;
         const rawFilePath = path.join(DEBUG_DIR, rawFilename);
         await fsp.writeFile(rawFilePath, outImg.buf);
         const rawStoredPath = `shares/debug/${rawFilename}`;
+
+        const extraDebug = {};
+        if (debugImages?.pass1?.buf) {
+          const ext = extFromMime(debugImages.pass1.mime);
+          const filename = `${id}-pass1-gemini.${ext}`;
+          await fsp.writeFile(path.join(DEBUG_DIR, filename), debugImages.pass1.buf);
+          extraDebug.debugPass1Url = `${origin}/shares/debug/${filename}`;
+        }
+        if (debugImages?.pass2?.buf) {
+          const ext = extFromMime(debugImages.pass2.mime);
+          const filename = `${id}-pass2-swap.${ext}`;
+          await fsp.writeFile(path.join(DEBUG_DIR, filename), debugImages.pass2.buf);
+          extraDebug.debugPass2Url = `${origin}/shares/debug/${filename}`;
+        }
+
         return {
           debugRawImageUrl: `${origin}/${rawStoredPath}`,
           debugRawPath: rawStoredPath,
+          ...extraDebug,
         };
       },
     });
@@ -266,5 +292,10 @@ app.listen(port, () => {
     `Face-swap (two-pass) ${isFaceSwapAvailable() ? 'ENABLED' : 'disabled'} — REPLICATE_API_TOKEN ${
       isFaceSwapAvailable() ? 'present' : 'missing'
     }`
+  );
+  console.log(
+    `Face-restore (pass 3) ${
+      isFaceRestoreEnabled() ? 'ENABLED' : 'disabled'
+    } — codeformer_fidelity ${resolveCodeformerFidelity()} — model ${resolveFaceRestoreModel()}`
   );
 });

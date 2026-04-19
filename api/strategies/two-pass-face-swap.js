@@ -1,7 +1,17 @@
-// Two-pass Boliden strategy: Gemini produces the scene composite with the user
-// in it (using the proven single-pass insert prompt), then a dedicated
-// face-swap model replaces the Gemini-rendered face with the user's actual
-// face from the selfie.
+// Boliden strategy with up to three stages:
+//   Pass 1 — Gemini 2.5 Flash Image composite: scene + selfie -> full output
+//            with a placeholder face (identity block is relaxed because a
+//            downstream swap will replace the face anyway).
+//   Pass 2 — Replicate InsightFace face-swap: replaces the Gemini-rendered
+//            face with the user's actual face from the selfie.
+//   Pass 3 — Replicate CodeFormer face-restore (optional): adds natural skin
+//            texture, pore detail, and edge blending to the swapped face so
+//            it matches surrounding image detail. Targets the inswapper_128
+//            "smooth pasted face" artifact. Enabled by default, gated on
+//            ENABLE_FACE_RESTORE and the presence of REPLICATE_API_TOKEN.
+//
+// Pass 2 + Pass 3 are delegated to api/postProcessFace.js so the same
+// identity-locking step can be reused by the single-pass fallback strategy.
 //
 // Why pass 1 reuses the insert prompt instead of a separate "scene-only"
 // prompt: Gemini 2.5 Flash Image reliably handles the 2-image composite mode
@@ -16,13 +26,17 @@
 //   - If the Gemini pass fails, return null so the pipeline can try the next
 //     strategy (single-pass-gemini).
 //   - If the face-swap pass fails, return the Gemini pass output as-is with
-//     strategyName suffixed `:pass1-only` so the caller can see swap was
-//     skipped.
+//     strategyName suffixed `:pass1-only`.
+//   - If face-restore is disabled or fails, return the swap output with
+//     strategyName suffixed `:no-restore`. When restore succeeds, the
+//     strategyName is suffixed `+restore`.
 
 import { COMPANY_IDS } from '../../public/shared/company-scenes.js';
 import { buildInsertPrompt } from '../../public/shared/boliden/prompt-insert.js';
+import { resolveBolidenSlimPrompts } from '../bolidenPromptOptions.js';
 import { runGeminiEdit } from '../geminiClient.js';
-import { isFaceSwapAvailable, swapFace } from '../faceSwap.js';
+import { isFaceSwapAvailable } from '../faceSwap.js';
+import { applyFaceSwapAndRestore } from '../postProcessFace.js';
 
 /** @type {import('./types.js').GenerationStrategy} */
 export const twoPassFaceSwapStrategy = {
@@ -40,6 +54,7 @@ export const twoPassFaceSwapStrategy = {
     // and demand proportional head/body geometry instead of aggressive facial
     // geometry preservation — Gemini otherwise portraitizes the crop and
     // produces an oversized head relative to the body.
+    const slim = resolveBolidenSlimPrompts();
     const { prompt, fallbackPrompt } = buildInsertPrompt(
       ctx.scene,
       ctx.personBrief,
@@ -47,7 +62,7 @@ export const twoPassFaceSwapStrategy = {
         qualitySuffix: ctx.aspectPreset.qualitySuffix,
         compositeQualitySuffix: ctx.aspectPreset.compositeQualitySuffix,
       },
-      { faceWillBeSwapped: true }
+      { faceWillBeSwapped: true, slim, aspectId: ctx.aspectPreset.id }
     );
     const hasScene = !!ctx.sceneImage;
     const pass1Prompt = hasScene ? prompt : fallbackPrompt;
@@ -57,6 +72,7 @@ export const twoPassFaceSwapStrategy = {
       sceneId: ctx.scene.id,
       outputAspect: ctx.aspectPreset.id,
       mode: hasScene ? 'composite' : 'text-only',
+      slimPrompts: slim,
     });
 
     const pass1Image = await runGeminiEdit({
@@ -78,14 +94,14 @@ export const twoPassFaceSwapStrategy = {
       bytes: pass1Image.buf.length,
     });
 
-    const swapped = await swapFace({
-      targetImage: pass1Image,
-      sourceFace: ctx.selfie,
+    const post = await applyFaceSwapAndRestore({
+      image: pass1Image,
+      selfie: ctx.selfie,
       reqId: ctx.reqId,
       log: ctx.log,
     });
 
-    if (!swapped) {
+    if (post.outcome === 'no-swap') {
       ctx.log(ctx.reqId, 'warn', 'strategy.twoPass.pass2.degraded', {
         reason: 'face-swap returned null; using pass1 image',
       });
@@ -96,12 +112,40 @@ export const twoPassFaceSwapStrategy = {
       };
     }
 
+    if (post.outcome === 'no-restore') {
+      ctx.log(ctx.reqId, 'log', 'strategy.twoPass.pass3.skipped', {
+        reason: 'face-restore disabled, missing token, or returned null',
+      });
+      return {
+        image: post.image,
+        strategyName: `${this.name}:no-restore`,
+        debug: {
+          pass1Bytes: pass1Image.buf.length,
+          pass2Bytes: post.swappedImage?.buf.length,
+          restoreSkipped: true,
+        },
+        debugImages: {
+          pass1: pass1Image,
+          pass2: post.swappedImage,
+        },
+      };
+    }
+
+    ctx.log(ctx.reqId, 'log', 'strategy.twoPass.pass3.ok', {
+      mime: post.image.mime,
+      bytes: post.image.buf.length,
+    });
     return {
-      image: swapped,
-      strategyName: this.name,
+      image: post.image,
+      strategyName: `${this.name}+restore`,
       debug: {
         pass1Bytes: pass1Image.buf.length,
-        pass2Bytes: swapped.buf.length,
+        pass2Bytes: post.swappedImage?.buf.length,
+        pass3Bytes: post.restoredImage?.buf.length,
+      },
+      debugImages: {
+        pass1: pass1Image,
+        pass2: post.swappedImage,
       },
     };
   },

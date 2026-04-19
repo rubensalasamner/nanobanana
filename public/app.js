@@ -7,6 +7,7 @@ import {
   getOutputAspectPreset,
   resolveOutputAspectId,
 } from './shared/output-aspect.js';
+import { BOOTH_CLIENT_PRESET_IDS, renderDefaultPresetGrid } from './shared/default-presets.js';
 
 // ----- DOM -----
 const video = document.getElementById('video');
@@ -25,7 +26,6 @@ const btnApply = document.getElementById('btnApply');
 const btnDownload = document.getElementById('btnDownload');
 const btnPrint = document.getElementById('btnPrint');
 const grid = document.getElementById('presetGrid');
-const DEFAULT_GRID_HTML = grid?.innerHTML ?? '';
 
 const qrImg = document.getElementById('qr');
 const btnCopy = document.getElementById('btnCopy');
@@ -209,8 +209,10 @@ if (stepNav) {
 // ----- State -----
 let stream = null;
 let selectedPrompt = null;
+let selectedPresetId = null;
 let latestBlob = null; // downscaled upload
 let latestShare = null; // { imageUrl, shareUrl, qrDataUrl }
+let latestLocalResultUrl = null;
 let isApplying = false;
 let styleStepTimeout = null;
 let nativeCapturePending = false;
@@ -306,20 +308,8 @@ function checkImageUrlExists(url) {
   });
 }
 
-function applyCompanyExperience() {
-  document.body.dataset.company = companyId;
-
-  if (!grid) return;
-
-  if (companyId !== COMPANY_IDS.BOLIDEN) {
-    if (DEFAULT_GRID_HTML && grid.innerHTML !== DEFAULT_GRID_HTML) {
-      grid.innerHTML = DEFAULT_GRID_HTML;
-    }
-    return;
-  }
-
+function applyBolidenBranding() {
   const brandEls = document.querySelectorAll('.camera-brand, .share-brand');
-
   brandEls.forEach((el) => {
     el.textContent = 'Boliden';
   });
@@ -338,7 +328,10 @@ function applyCompanyExperience() {
     mobileHintEl.textContent =
       'Face the camera straight on, fill the frame with your face and shoulders, and use even lighting. Your body and the work scene are generated for you.';
   }
+}
 
+function renderBolidenSceneGrid() {
+  if (!grid) return;
   grid.innerHTML = '';
   for (const scene of BOLIDEN_SCENES) {
     const card = document.createElement('button');
@@ -359,6 +352,21 @@ function applyCompanyExperience() {
       }
     });
   }
+}
+
+function applyCompanyExperience() {
+  document.body.dataset.company = companyId;
+
+  if (!grid) return;
+
+  if (companyId !== COMPANY_IDS.BOLIDEN) {
+    const defaultPresetIds = appMode === APP_MODES.BOOTH ? BOOTH_CLIENT_PRESET_IDS : null;
+    renderDefaultPresetGrid(grid, defaultPresetIds);
+    return;
+  }
+
+  applyBolidenBranding();
+  renderBolidenSceneGrid();
 }
 
 // Hourly cleanup ping (hits Vercel serverless /api/cleanup)
@@ -782,6 +790,7 @@ function retake() {
 function restartFlow() {
   selectedPrompt = null;
   selectedSceneId = null;
+  selectedPresetId = null;
   latestShare = null;
   grid?.querySelectorAll('[data-prompt]').forEach((el) => (el.style.outline = ''));
   retake();
@@ -814,6 +823,7 @@ function handlePresetTap(e) {
   btn.style.outline = '3px solid var(--accent)';
   selectedPrompt = btn.dataset.prompt;
   selectedSceneId = btn.dataset.sceneId || null;
+  selectedPresetId = btn.dataset.presetId || null;
   btnApply.disabled = !latestBlob;
   apiStatus.textContent = 'Selected: ' + (btn.textContent.trim() || 'preset');
 
@@ -971,6 +981,30 @@ function attachResultActions(out) {
   };
 }
 
+function renderNoOpPhotoResult(imageBlob) {
+  if (!imageBlob || !resultPhoto) return;
+
+  if (latestLocalResultUrl) {
+    URL.revokeObjectURL(latestLocalResultUrl);
+    latestLocalResultUrl = null;
+  }
+  latestLocalResultUrl = URL.createObjectURL(imageBlob);
+
+  // Keep existing behavior: show result image + enable download/print.
+  resultPhoto.src = latestLocalResultUrl;
+  resultPhoto.classList.remove('hidden');
+  photo.src = latestLocalResultUrl;
+
+  // No share URL / QR for a true no-op.
+  latestShare = { imageUrl: latestLocalResultUrl, shareUrl: null, qrDataUrl: null };
+  attachResultActions({ imageUrl: latestLocalResultUrl, shareUrl: null, qrDataUrl: null });
+
+  apiStatus.textContent =
+    appMode === APP_MODES.MOBILE ? 'Done. Your image is ready.' : 'Done. Your photo is ready.';
+  showStep('result');
+  updateResultButtons();
+}
+
 function buildSocialShareTargets(shareUrl) {
   const encodedUrl = encodeURIComponent(shareUrl);
   const encodedText = encodeURIComponent('Check out my Nano Banana image');
@@ -1078,6 +1112,22 @@ async function applyPreset() {
   setStyleCardLoading(promptAtStart, true);
   setApplyButtonLoading(true);
 
+  if (selectedPresetId === 'original-photo') {
+    apiStatus.textContent = 'Preparing photo…';
+    try {
+      setStyleCardLoading(promptAtStart, false);
+      renderNoOpPhotoResult(latestBlob);
+    } finally {
+      setApplyButtonLoading(false);
+      isApplying = false;
+      if (styleTitle && currentStep === 'style') {
+        setStyleTitleGenerating(false);
+      }
+      restoreStyleCards();
+    }
+    return;
+  }
+
   apiStatus.textContent = 'Applying preset…';
   try {
     const out = await callImageEditAndShareAPI(latestBlob, promptAtStart, selectedSceneId);
@@ -1124,6 +1174,7 @@ if (btnChangeStyle) {
     // Reset style step state
     selectedPrompt = null;
     selectedSceneId = null;
+    selectedPresetId = null;
     isApplying = false; // Reset applying flag
 
     // Clear all style card outlines and restore cards

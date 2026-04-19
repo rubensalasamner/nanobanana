@@ -1,8 +1,21 @@
 // Scene integration blocks: where the person goes in the frame, and how they blend.
 
-export function buildVisualIntegrationBlock(hasSceneImage) {
+export function buildVisualIntegrationBlock(hasSceneImage, options = {}) {
+  const { slim = false } = options;
   if (!hasSceneImage) {
-    return 'VISUAL INTEGRATION: Light the person with realistic directional lighting consistent with the described environment — visible key-light direction, cast shadows, matching color temperature, subtle grain and exposure characteristic of an on-site photograph. The person should look photographed in the scene, not pasted onto it.';
+    return slim
+      ? 'VISUAL: Directional light, shadows, grain, and exposure like an on-site photo — not pasted.'
+      : 'VISUAL INTEGRATION: Light the person with realistic directional lighting consistent with the described environment — visible key-light direction, cast shadows, matching color temperature, subtle grain and exposure characteristic of an on-site photograph. The person should look photographed in the scene, not pasted onto it.';
+  }
+  if (slim) {
+    return [
+      'VISUAL INTEGRATION (new person must look photographed inside image 1, not pasted):',
+      '- Key light, fill, color temperature, and exposure on face/hat/clothing match image 1. Hard light stays hard, soft fill stays soft.',
+      '- Cast shadows from the person onto ground/walls/equipment consistent with image 1\'s light directions; contact shadows at feet and any surface contact.',
+      '- Match image 1\'s grain, sharpness, micro-contrast, and depth-of-field falloff on the person — not crisper, not smoother.',
+      '- Skin, hi-vis fabric, and PPE pick up the same dust, wear, grime, and atmospheric cast as real workers in image 1 — no factory-clean paste-in.',
+      '- Silhouette edges blend naturally — no hard cutout outline, no halo, no color fringing.',
+    ].join('\n');
   }
   return [
     'VISUAL INTEGRATION (the person must look photographed inside image 1, not pasted on top):',
@@ -16,11 +29,13 @@ export function buildVisualIntegrationBlock(hasSceneImage) {
   ].join('\n');
 }
 
-export function buildSceneIntegrationBlock(scene, hasSceneImage) {
+export function buildSceneIntegrationBlock(scene, hasSceneImage, options = {}) {
+  const { slim = false } = options;
   const sceneHint = (scene.promptHint || '').trim();
   const placementHint = (scene.placementHint || '').trim();
   const parts = ['SCENE INTEGRATION:'];
   if (sceneHint) parts.push(sceneHint);
+  const wantsVisitorLabel = hasSceneImage && scene?.replaceReferenceSubject !== true;
 
   if (scene.replaceReferenceSubject && hasSceneImage) {
     parts.push(
@@ -32,6 +47,22 @@ export function buildSceneIntegrationBlock(scene, hasSceneImage) {
     parts.push(
       `Match the work clothing and PPE visible in image 1 onto the replaced person (${scene.ppeHint}). The face and identity must match image 2 — but the lighting, grain, atmosphere, and wear must match image 1.`
     );
+    return parts.join(' ');
+  }
+
+  if (hasSceneImage && slim) {
+    parts.push(
+      'Keep everyone and everything already in image 1. ADD one additional worker (not a clone of an existing figure) — the scene must show one more person than image 1. Wide/medium-wide documentary shot; new person in side third, mid-ground, natural pose alongside the existing crew — not centered, not foreground-hero, not a portrait. Head ~10–14% of frame height.',
+    );
+    if (placementHint) parts.push(`Placement: ${placementHint}`);
+    parts.push(
+      `PPE: ${scene.ppeHint} (equipment only; do not change face shape).`
+    );
+    if (wantsVisitorLabel) {
+      parts.push(
+        'Visitor marking: add a clear fabric patch / print on the new person’s hi-vis jacket or shirt that reads exactly "BESÖKARE" (uppercase, plain block letters). This is the only text allowed.'
+      );
+    }
     return parts.join(' ');
   }
 
@@ -53,11 +84,20 @@ export function buildSceneIntegrationBlock(scene, hasSceneImage) {
     );
   } else {
     parts.push(
-      'The person stands within the scene at natural full-body proportions, positioned in the left third or right third of the frame (not dead-center). The overall shot is a wide or medium-wide documentary photograph — the person\'s body fills roughly one-quarter of the frame height and the head fills roughly 6–10% of the frame height. This is a scene photograph that includes the person, not a portrait.'
+      slim
+        ? 'Wide documentary framing; person in side third; head ~6–10% frame height; not a portrait.'
+        : 'The person stands within the scene at natural full-body proportions, positioned in the left third or right third of the frame (not dead-center). The overall shot is a wide or medium-wide documentary photograph — the person\'s body fills roughly one-quarter of the frame height and the head fills roughly 6–10% of the frame height. This is a scene photograph that includes the person, not a portrait.'
     );
   }
   parts.push(
-    `Add standard PPE on top of the person's existing look: ${scene.ppeHint} PPE is added as equipment — it must not change the face.`
+    slim
+      ? `PPE: ${scene.ppeHint} (gear only; do not change the face).`
+      : `Add standard PPE on top of the person's existing look: ${scene.ppeHint} PPE is added as equipment — it must not change the face.`
   );
+  if (wantsVisitorLabel) {
+    parts.push(
+      'Visitor marking: the added new person is a visitor. Add a clear fabric patch / print on their hi-vis jacket or shirt that reads exactly "BESÖKARE" (uppercase, plain block letters). Do not add any other text.'
+    );
+  }
   return parts.join(' ');
 }

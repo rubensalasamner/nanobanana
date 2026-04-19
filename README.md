@@ -104,27 +104,63 @@ Set these in your Vercel project settings:
 
 ### Optional Environment Variables
 
-- **REPLICATE_API_TOKEN** - Replicate API token. When set, Boliden scenes use a
-  two-pass pipeline: Gemini generates the scene with a generic worker, then
-  Replicate's `cdingram/face-swap` (InsightFace) replaces the face with the
-  user's actual face. This dramatically improves identity fidelity at the cost
-  of one extra HTTP call per request (~3–6s). When unset, Boliden scenes fall
-  back transparently to the single-pass Gemini composite.
+- **REPLICATE_API_TOKEN** - Replicate API token. When set, Boliden scenes use
+  the multi-pass pipeline below. When unset, Boliden scenes fall back
+  transparently to the single-pass Gemini composite (no identity correction).
 - **REPLICATE_FACE_SWAP_MODEL** - Override the face-swap model version
-  reference (default: pinned version of `cdingram/face-swap`).
+  reference (default: pinned version of `cdingram/face-swap`, InsightFace
+  inswapper_128).
+- **ENABLE_FACE_RESTORE** - `true` (default) / `false`. Controls whether the
+  CodeFormer restore pass runs after face-swap. Set to `false` to trade
+  texture/detail quality for ~5–10s of latency per request. Takes effect at
+  runtime; no restart needed for a new Replicate call to pick up the change.
+- **SKIP_FACE_RESTORE** - `true` / `1` / `yes` forces the CodeFormer restore
+  pass off, regardless of `ENABLE_FACE_RESTORE`. Use this as a quick latency
+  kill-switch when CodeFormer containers are cold-starting.
+- **REPLICATE_FACE_RESTORE_MODEL** - Override the face-restore model version
+  reference (default: pinned version of `sczhou/codeformer`).
+- **CODEFORMER_FIDELITY** - `0.0` to `1.0`, default `0.7`. Controls the
+  CodeFormer identity/detail trade-off: `0.0` produces maximum texture
+  restoration but can erode identity; `1.0` maximally preserves identity at
+  the cost of less aggressive restoration. `0.7` is a reasonable default that
+  favors identity.
+- **BOLIDEN_SLIM_PROMPTS** - `true` / `1` / `yes` enables shorter Boliden
+  **text** prompts to Gemini (intro, identity, scene, visual, constraints,
+  aspect blurb). It does **not** change output resolution, JPEG quality, or
+  post-processing — only instruction length. Use when debugging `IMAGE_OTHER`
+  or token load. Default off. Logs include `slimPrompts: true` on Boliden
+  strategy requests.
 
 ### Generation Strategies
 
 The image pipeline uses a strategy pattern (`api/strategies/`):
 
 - `two-pass-face-swap` - Boliden + `REPLICATE_API_TOKEN` set (default when
-  available). Highest identity fidelity.
+  available). Highest identity fidelity. Up to three passes:
+  1. Gemini 2.5 Flash Image composite (scene + selfie → output with placeholder
+     face). Pass 1 latency ~10–17s.
+  2. Replicate InsightFace face-swap (replaces the Gemini face with the user's
+     actual face from the selfie). Pass 2 latency ~7–12s warm, 30–60s cold.
+  3. Replicate CodeFormer face-restore (adds skin texture, pore detail, edge
+     blending to the swapped face). Pass 3 latency ~5–10s warm, 30–60s cold.
+     Gated on `ENABLE_FACE_RESTORE` (default true) and `REPLICATE_API_TOKEN`.
+
+  The response's `strategyName` reflects which passes ran:
+  - `two-pass-face-swap+restore` — all three passes succeeded.
+  - `two-pass-face-swap:no-restore` — passes 1+2 succeeded; restore was
+    disabled, errored, or timed out.
+  - `two-pass-face-swap:pass1-only` — pass 1 succeeded; swap failed (e.g.
+    Replicate 402, token invalid). Output face is the Gemini placeholder.
 - `single-pass-gemini` - Boliden fallback when no Replicate token, or when a
   scene opts out via `useFaceSwap: false` in `public/shared/company-scenes.js`.
 - `default` - Non-Boliden flow. Plain prompt + selfie through Gemini.
 
 The selector tries strategies in priority order and falls back automatically
 if an earlier strategy fails to produce an image.
+
+Inspect current configuration at `/diag` — the `faceSwap` and `faceRestore`
+sections show whether each pass is enabled, the model in use, and the
+CodeFormer fidelity setting.
 
 ### Deployment Steps
 

@@ -7,6 +7,11 @@ import { nanoid } from 'nanoid';
 import { put as blobPut, list as blobList, del as blobDel } from './storage.js';
 import { isFaceSwapAvailable } from './faceSwap.js';
 import {
+  isFaceRestoreEnabled,
+  resolveCodeformerFidelity,
+  resolveFaceRestoreModel,
+} from './faceRestore.js';
+import {
   handleShareDownload,
   performBlobCleanup,
   runEditCore,
@@ -92,6 +97,11 @@ async function handleDiag(_req, res) {
     faceSwap: {
       enabled: isFaceSwapAvailable(),
       model: process.env.REPLICATE_FACE_SWAP_MODEL || 'cdingram/face-swap (pinned)',
+    },
+    faceRestore: {
+      enabled: isFaceRestoreEnabled(),
+      model: resolveFaceRestoreModel(),
+      fidelity: resolveCodeformerFidelity(),
     },
     vercelDeploymentId: process.env.VERCEL_DEPLOYMENT_ID || null,
     vercelGitCommitSha: process.env.VERCEL_GIT_COMMIT_SHA || null,
