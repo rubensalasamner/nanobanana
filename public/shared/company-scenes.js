@@ -7,7 +7,7 @@ const BOLIDEN_SCENE_DATA = [
   {
     id: 'underground-drill',
     label: 'Underground drilling',
-    imagePath: 'assets/images/boliden/drilling-at-zinkgruvan.jpeg',
+    imagePath: 'assets/images/boliden/prompt-backgrounds/drilling-at-zinkgruvan.jpeg',
     nativeAspect: '16:9',
     ppeHint: 'Hard hat with mounted lamp, reflective yellow safety jacket, work gloves.',
     promptHint:
@@ -18,7 +18,7 @@ const BOLIDEN_SCENE_DATA = [
   {
     id: 'tunnel-shift',
     label: 'Tunnel shift',
-    imagePath: 'assets/images/boliden/mining-raw.jpg',
+    imagePath: 'assets/images/boliden/prompt-backgrounds/mining-raw.jpg',
     nativeAspect: '16:9',
     ppeHint: 'Helmet, high-visibility outerwear, utility belt, rugged boots.',
     promptHint:
@@ -29,7 +29,7 @@ const BOLIDEN_SCENE_DATA = [
   {
     id: 'vehicle-in-the-mine',
     label: 'Vehicle in the mine',
-    imagePath: 'assets/images/boliden/vehicle-mine.jpeg',
+    imagePath: 'assets/images/boliden/prompt-backgrounds/vehicle-mine.jpeg',
     nativeAspect: '16:9',
     ppeHint: 'Industrial PPE matching underground mine operations, keep high-visibility details.',
     promptHint:
@@ -40,7 +40,7 @@ const BOLIDEN_SCENE_DATA = [
   {
     id: 'coworker-with-machine',
     label: 'Coworker with machine',
-    imagePath: 'assets/images/boliden/coworker-with-machine.jpeg',
+    imagePath: 'assets/images/boliden/prompt-backgrounds/coworker-with-machine.jpeg',
     nativeAspect: '16:9',
     replaceReferenceSubject: true,
     ppeHint:
@@ -51,7 +51,7 @@ const BOLIDEN_SCENE_DATA = [
   {
     id: 'water-samples',
     label: 'Water samples',
-    imagePath: 'assets/images/boliden/water-samples.jpeg',
+    imagePath: 'assets/images/boliden/prompt-backgrounds/water-samples.jpeg',
     nativeAspect: '16:9',
     ppeHint:
       'High-visibility jacket with reflective stripes, helmet/hard hat (with headlamp if present), safety glasses, gloves, sturdy work boots.',
@@ -63,7 +63,7 @@ const BOLIDEN_SCENE_DATA = [
   {
     id: 'coffee-break',
     label: 'Coffee break',
-    imagePath: 'assets/images/boliden/coffee-break.jpeg',
+    imagePath: 'assets/images/boliden/prompt-backgrounds/coffee-break.jpeg',
     nativeAspect: '16:9',
     ppeHint:
       'Neon high-visibility jacket and trousers with navy panels and silver reflective stripes, yellow hard hat with headlamp if others wear one, work boots, radio on belt — match the crew.',
