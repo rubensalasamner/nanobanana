@@ -767,6 +767,7 @@ button.ghost {
   margin-top: 32px;
   display: flex;
   justify-content: center;
+  align-items: center;
   gap: 16px;
 }
 
@@ -774,6 +775,8 @@ button.ghost {
   min-width: 250px;
   border-radius: 36px;
   font-size: 28px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .camera-actions #btnRetake {
