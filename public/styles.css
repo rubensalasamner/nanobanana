@@ -250,6 +250,14 @@ body[data-company='boliden'] #step-share {
   color: var(--accent);
 }
 
+.camera-brand,
+.share-brand {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .camera-brand img,
 .share-brand img {
   display: block;
@@ -258,6 +266,12 @@ body[data-company='boliden'] #step-share {
   max-width: min(320px, 82vw);
   object-fit: contain;
   background: transparent;
+  border-radius: 0 !important;
+}
+
+body[data-company='boliden'] .camera-brand img,
+body[data-company='boliden'] .share-brand img {
+  background: transparent !important;
 }
 
 .result-container .camera-brand {
@@ -308,6 +322,10 @@ body[data-company='boliden'] .share-title,
 body[data-company='boliden'] .welcome-text,
 body[data-company='boliden'] .printing-text {
   color: var(--fg);
+}
+
+body[data-company='boliden'] .camera-title {
+  font-weight: 700;
 }
 
 .camera-wrap {
@@ -724,6 +742,7 @@ button {
   font-size: 28px;
   user-select: none;
   touch-action: manipulation;
+  font-family: inherit;
 }
 button:active {
   transform: scale(0.98);
