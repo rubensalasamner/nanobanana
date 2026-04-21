@@ -800,6 +800,9 @@ button.ghost {
   border-radius: 36px;
   border-color: #d0d7e2;
   color: #1a1a1a;
+  min-width: 250px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 body[data-company='boliden'] .camera-actions #btnRetake {
