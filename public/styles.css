@@ -581,13 +581,19 @@ body[data-company='boliden'][data-mode='mobile'] .style-card {
 .result-actions {
   display: flex;
   flex-wrap: wrap;
-  gap: 24px;
+  gap: 10px;
   justify-content: center;
+  align-items: center;
   margin-bottom: 48px;
 }
 
 .result-actions .pill-btn {
-  margin: 12px;
+  margin: 0;
+  min-width: 0;
+  max-width: min(200px, 44vw);
+  flex: 0 1 auto;
+  padding: 16px 20px;
+  font-size: 22px;
 }
 
 .result-container #btnRestart {
@@ -960,7 +966,7 @@ img {
   flex-direction: column;
   align-items: center;
   justify-content: flex-end;
-  gap: 24px;
+  gap: 16px;
   padding: 0 16px 120px;
   margin: 0 auto;
 }
@@ -991,7 +997,7 @@ img {
   background: #fff;
   position: relative;
   overflow: hidden;
-  margin-bottom: 32px;
+  margin-bottom: 16px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1011,7 +1017,7 @@ img {
   font-size: clamp(18px, 2.5vw, 24px);
   color: #666;
   text-align: center;
-  margin: 0 0 32px 0;
+  margin: 0 0 12px 0;
   max-width: 500px;
 }
 
@@ -1047,15 +1053,15 @@ body[data-company='boliden'][data-mode='mobile'] .share-instruction {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
-  margin-bottom: 28px;
+  gap: 10px;
+  margin-bottom: 16px;
 }
 
 .share-social-grid {
   width: 100%;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px;
 }
 
 .social-share-btn {
@@ -1250,13 +1256,21 @@ body[data-mode='mobile'] .camera-actions {
 
 body[data-mode='mobile'] .camera-actions #btnSnap,
 body[data-mode='mobile'] .camera-actions #btnRetake,
-body[data-mode='mobile'] .camera-actions #btnContinue,
-body[data-mode='mobile'] .result-actions .pill-btn,
-body[data-mode='mobile'] .result-container #btnRestart {
+body[data-mode='mobile'] .camera-actions #btnContinue {
   width: min(360px, 90vw);
   min-width: 0;
   font-size: 22px;
   padding: 16px 24px;
+}
+
+body[data-mode='mobile'] .result-actions .pill-btn,
+body[data-mode='mobile'] .result-container #btnRestart,
+body[data-mode='mobile'] #step-share .share-container > .pill-btn {
+  width: min(200px, 44vw);
+  max-width: min(200px, 44vw);
+  min-width: 0;
+  font-size: 18px;
+  padding: 14px 18px;
 }
 
 body[data-mode='mobile'] .style-grid {
