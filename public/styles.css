@@ -223,6 +223,11 @@ body[data-company='boliden'] .style-loading-line {
   color: var(--muted);
 }
 
+.style-loading-dots {
+  display: inline-block;
+  min-width: 4ch;
+}
+
 .result-title {
   margin: 0 0 40px 0;
   font-size: clamp(36px, 5vw, 48px);
@@ -280,6 +285,13 @@ body[data-output-aspect='3:4'] .result-stage {
   justify-items: center;
 }
 
+.style-grid.style-grid--loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+
 @media (max-width: 480px) {
   .style-grid {
     grid-template-columns: repeat(1, minmax(0, 1fr));
@@ -304,13 +316,29 @@ body[data-output-aspect='3:4'] .result-stage {
   justify-content: center;
   box-shadow: 0 10px 20px rgba(55, 125, 255, 0.3);
   cursor: pointer;
-  transition: transform 0.1s;
+  transition:
+    transform 280ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 220ms ease;
+  will-change: transform, opacity;
 }
 
 body[data-company='boliden'] .style-card {
   background: var(--accent);
   color: var(--fg);
   box-shadow: 0 10px 20px rgba(129, 164, 200, 0.28);
+}
+
+.style-card.style-card--dismiss {
+  opacity: 0;
+  transform: translateY(14px) scale(0.96);
+}
+
+.style-card.style-card--selected {
+  transform: translateY(-2px) scale(1.02);
+}
+
+.style-card.style-card--gone {
+  display: none !important;
 }
 
 .style-card:active:not(:disabled) {

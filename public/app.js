@@ -295,20 +295,38 @@ let selectedCardKey = null;
 
 // ----- Style loading line -----
 const STYLE_LOADING_LINES = Object.freeze([
-  'Finding proper clothes and a helmet that fits…',
-  'Checking PPE compliance (and tightening that chin strap)…',
-  'Dusting off the hi-vis jacket for extra authenticity…',
-  'Matching mine lighting so you don’t look copy-pasted…',
-  'Calibrating reflective stripes for maximum safety vibes…',
-  'Asking the break room coffee machine for permission…',
-  'Aligning shadows and grain like a real on-site photo…',
+  'Finding proper clothes and a helmet that fits',
+  'Checking PPE compliance (and tightening that chin strap)',
+  'Dusting off the hi-vis jacket for extra authenticity',
+  'Matching mine lighting so you don’t look copy-pasted',
+  'Calibrating reflective stripes for maximum safety vibes',
+  'Asking the break room coffee machine for permission',
+  'Aligning shadows and grain like a real on-site photo',
 ]);
 let styleLoadingTimer = null;
 let styleLoadingIndex = 0;
+let styleDotsTimer = null;
+const STYLE_LINE_MS = 4400;
+const STYLE_DOTS_MAX = 4;
 
-function setStyleLoadingLine(text) {
+function ensureStyleLoadingMarkup() {
   if (!styleLoadingLine) return;
-  styleLoadingLine.textContent = text;
+  if (styleLoadingLine.querySelector('.style-loading-text')) return;
+  styleLoadingLine.replaceChildren();
+  const textSpan = document.createElement('span');
+  textSpan.className = 'style-loading-text';
+  const dotsSpan = document.createElement('span');
+  dotsSpan.className = 'style-loading-dots';
+  styleLoadingLine.append(textSpan, dotsSpan);
+}
+
+function setStyleLoadingText(baseText) {
+  if (!styleLoadingLine) return;
+  ensureStyleLoadingMarkup();
+  const textSpan = styleLoadingLine.querySelector('.style-loading-text');
+  const dotsSpan = styleLoadingLine.querySelector('.style-loading-dots');
+  if (textSpan) textSpan.textContent = baseText;
+  if (dotsSpan) dotsSpan.textContent = '';
   try {
     styleLoadingLine.animate(
       [
@@ -320,6 +338,48 @@ function setStyleLoadingLine(text) {
   } catch {
     // Older browsers: no Web Animations API. Text still updates.
   }
+  startDotsAnimation();
+}
+
+function startDotsAnimation() {
+  if (!styleLoadingLine) return;
+  ensureStyleLoadingMarkup();
+  const dotsSpan = styleLoadingLine.querySelector('.style-loading-dots');
+  if (!dotsSpan) return;
+  if (styleDotsTimer) clearInterval(styleDotsTimer);
+  let dots = 0;
+  const stepMs = Math.max(250, Math.round(STYLE_LINE_MS / STYLE_DOTS_MAX));
+  styleDotsTimer = setInterval(() => {
+    dots = Math.min(STYLE_DOTS_MAX, dots + 1);
+    dotsSpan.textContent = '.'.repeat(dots);
+  }, stepMs);
+}
+
+// ----- Style loading mode (focus selected button) -----
+function enterStyleLoadingMode(cardKey) {
+  if (!grid || !cardKey) return;
+  grid.classList.add('style-grid--loading');
+  for (const card of grid.querySelectorAll('[data-card-key]')) {
+    const isSelected = card.dataset.cardKey === cardKey;
+    card.classList.toggle('style-card--selected', isSelected);
+    if (isSelected) {
+      card.classList.remove('style-card--dismiss', 'style-card--gone');
+    } else {
+      card.classList.add('style-card--dismiss');
+      window.setTimeout(() => card.classList.add('style-card--gone'), 260);
+    }
+    card.disabled = true;
+  }
+  if (stylePreview) stylePreview.classList.add('hidden');
+}
+
+function exitStyleLoadingMode() {
+  if (!grid) return;
+  grid.classList.remove('style-grid--loading');
+  for (const card of grid.querySelectorAll('[data-card-key]')) {
+    card.classList.remove('style-card--selected', 'style-card--dismiss', 'style-card--gone');
+    card.disabled = false;
+  }
 }
 
 function startStyleLoadingLines() {
@@ -327,17 +387,21 @@ function startStyleLoadingLines() {
   if (styleLoadingTimer) return;
   styleLoadingLine.classList.remove('hidden');
   styleLoadingIndex = Math.floor(Math.random() * STYLE_LOADING_LINES.length);
-  setStyleLoadingLine(STYLE_LOADING_LINES[styleLoadingIndex]);
+  setStyleLoadingText(STYLE_LOADING_LINES[styleLoadingIndex]);
   styleLoadingTimer = setInterval(() => {
     styleLoadingIndex = (styleLoadingIndex + 1) % STYLE_LOADING_LINES.length;
-    setStyleLoadingLine(STYLE_LOADING_LINES[styleLoadingIndex]);
-  }, 2200);
+    setStyleLoadingText(STYLE_LOADING_LINES[styleLoadingIndex]);
+  }, STYLE_LINE_MS);
 }
 
 function stopStyleLoadingLines() {
   if (styleLoadingTimer) {
     clearInterval(styleLoadingTimer);
     styleLoadingTimer = null;
+  }
+  if (styleDotsTimer) {
+    clearInterval(styleDotsTimer);
+    styleDotsTimer = null;
   }
   if (styleLoadingLine) {
     styleLoadingLine.classList.add('hidden');
@@ -940,8 +1004,13 @@ async function callImageEditAndShareAPI(imageBlob, prompt, sceneId) {
 function setStyleTitleGenerating(isGenerating) {
   if (!styleTitle) return;
   styleTitle.textContent = isGenerating ? 'Generating Image...' : getStyleTitleDefaultText();
-  if (isGenerating) startStyleLoadingLines();
-  else stopStyleLoadingLines();
+  if (isGenerating) {
+    startStyleLoadingLines();
+    enterStyleLoadingMode(selectedCardKey);
+  } else {
+    stopStyleLoadingLines();
+    exitStyleLoadingMode();
+  }
 }
 
 function setApplyButtonLoading(isLoading) {
