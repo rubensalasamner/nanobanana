@@ -958,15 +958,16 @@ function retake() {
   showStep('camera');
 }
 
-function restartFlow() {
+function restartFlow(targetStep = 'welcome') {
   selectedPrompt = null;
   selectedSceneId = null;
   selectedPresetId = null;
   selectedPipeline = null;
+  selectedCardKey = null;
   latestShare = null;
   grid?.querySelectorAll('[data-prompt]').forEach((el) => (el.style.outline = ''));
   retake();
-  showStep('welcome');
+  showStep(targetStep);
 }
 
 // ----- Presets -----
@@ -1577,7 +1578,7 @@ function initShareStep() {
 
 if (btnBackFromShare) {
   onTap(btnBackFromShare, () => {
-    showStep(modeStrategy.initialStep);
+    restartFlow(modeStrategy.initialStep);
   });
 }
 
