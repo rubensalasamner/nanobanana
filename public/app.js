@@ -348,7 +348,8 @@ function startDotsAnimation() {
   if (!dotsSpan) return;
   if (styleDotsTimer) clearInterval(styleDotsTimer);
   let dots = 0;
-  const stepMs = Math.max(250, Math.round(STYLE_LINE_MS / STYLE_DOTS_MAX));
+  // Dots animate 2× faster than the line cadence (user feedback).
+  const stepMs = Math.max(125, Math.round(STYLE_LINE_MS / (STYLE_DOTS_MAX * 2)));
   styleDotsTimer = setInterval(() => {
     dots = Math.min(STYLE_DOTS_MAX, dots + 1);
     dotsSpan.textContent = '.'.repeat(dots);
@@ -1009,7 +1010,7 @@ async function callImageEditAndShareAPI(imageBlob, prompt, sceneId) {
 
 function setStyleTitleGenerating(isGenerating) {
   if (!styleTitle) return;
-  styleTitle.textContent = isGenerating ? 'Generating Image...' : getStyleTitleDefaultText();
+  styleTitle.textContent = isGenerating ? 'Generating Image' : getStyleTitleDefaultText();
   if (isGenerating) {
     startStyleLoadingLines();
     enterStyleLoadingMode(selectedCardKey);
@@ -1318,7 +1319,12 @@ if (btnChangeStyle) {
     selectedPrompt = null;
     selectedSceneId = null;
     selectedPresetId = null;
+    selectedPipeline = null;
+    selectedCardKey = null;
     isApplying = false; // Reset applying flag
+
+    // If we were in the focused loading state, fully restore the grid + title.
+    setStyleTitleGenerating(false);
 
     // Clear all style card outlines and restore cards
     if (grid) {
