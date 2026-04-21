@@ -102,7 +102,7 @@
   --accent: #4285f4;
 }
 
-body[data-company='boliden'] {
+body[data-company='boliden'][data-mode='mobile'] {
   --bg: #182032; /* dark blue */
   --fg: #e4eaef; /* pale blue */
   --muted: rgba(228, 234, 239, 0.72);
@@ -138,11 +138,11 @@ body {
   color: var(--fg);
 }
 
-body[data-company='boliden'] #step-welcome,
-body[data-company='boliden'] #step-camera,
-body[data-company='boliden'] #step-style,
-body[data-company='boliden'] #step-result,
-body[data-company='boliden'] #step-share {
+body[data-company='boliden'][data-mode='mobile'] #step-welcome,
+body[data-company='boliden'][data-mode='mobile'] #step-camera,
+body[data-company='boliden'][data-mode='mobile'] #step-style,
+body[data-company='boliden'][data-mode='mobile'] #step-result,
+body[data-company='boliden'][data-mode='mobile'] #step-share {
   background: var(--bg);
 }
 
@@ -250,16 +250,17 @@ body[data-company='boliden'] #step-share {
   color: var(--accent);
 }
 
-.camera-brand,
-.share-brand {
+/* Mobile-only: center brand content so Boliden logo image lays out correctly. */
+body[data-mode='mobile'] .camera-brand,
+body[data-mode='mobile'] .share-brand {
   width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.camera-brand img,
-.share-brand img {
+body[data-mode='mobile'] .camera-brand img,
+body[data-mode='mobile'] .share-brand img {
   display: block;
   height: 34px;
   width: auto;
@@ -269,8 +270,8 @@ body[data-company='boliden'] #step-share {
   border-radius: 0 !important;
 }
 
-body[data-company='boliden'] .camera-brand img,
-body[data-company='boliden'] .share-brand img {
+body[data-company='boliden'][data-mode='mobile'] .camera-brand img,
+body[data-company='boliden'][data-mode='mobile'] .share-brand img {
   background: transparent !important;
 }
 
@@ -299,7 +300,7 @@ body[data-company='boliden'] .share-brand img {
     transform 260ms ease;
 }
 
-body[data-company='boliden'] .style-loading-line {
+body[data-company='boliden'][data-mode='mobile'] .style-loading-line {
   color: var(--muted);
 }
 
@@ -307,7 +308,7 @@ body[data-company='boliden'] .style-loading-line {
   display: inline-flex;
   align-items: baseline;
   gap: 0;
-  min-width: 4ch;
+  min-width: 7ch;
 }
 
 .style-loading-dot {
@@ -332,16 +333,16 @@ body[data-company='boliden'] .style-loading-line {
   font-weight: 400;
 }
 
-body[data-company='boliden'] .camera-title,
-body[data-company='boliden'] .style-title,
-body[data-company='boliden'] .result-title,
-body[data-company='boliden'] .share-title,
-body[data-company='boliden'] .welcome-text,
-body[data-company='boliden'] .printing-text {
+body[data-company='boliden'][data-mode='mobile'] .camera-title,
+body[data-company='boliden'][data-mode='mobile'] .style-title,
+body[data-company='boliden'][data-mode='mobile'] .result-title,
+body[data-company='boliden'][data-mode='mobile'] .share-title,
+body[data-company='boliden'][data-mode='mobile'] .welcome-text,
+body[data-company='boliden'][data-mode='mobile'] .printing-text {
   color: var(--fg);
 }
 
-body[data-company='boliden'] .camera-title {
+body[data-company='boliden'][data-mode='mobile'] .camera-title {
   font-weight: 700;
 }
 
@@ -423,7 +424,7 @@ body[data-output-aspect='3:4'] .result-stage {
   will-change: transform, opacity;
 }
 
-body[data-company='boliden'] .style-card {
+body[data-company='boliden'][data-mode='mobile'] .style-card {
   background: var(--accent);
   color: var(--fg);
   box-shadow: 0 10px 20px rgba(129, 164, 200, 0.28);
@@ -620,7 +621,7 @@ body[data-company='boliden'] .style-card {
   animation: bounce 1s infinite;
 }
 
-body[data-company='boliden'] .printing-arrow {
+body[data-company='boliden'][data-mode='mobile'] .printing-arrow {
   color: var(--accent);
 }
 
@@ -657,15 +658,15 @@ body[data-company='boliden'] .printing-arrow {
   box-shadow: none;
 }
 
-body[data-company='boliden'] .pill-btn,
-body[data-company='boliden'] button.primary {
+body[data-company='boliden'][data-mode='mobile'] .pill-btn,
+body[data-company='boliden'][data-mode='mobile'] button.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--fg);
   box-shadow: 0 8px 16px rgba(129, 164, 200, 0.28);
 }
 
-body[data-company='boliden'] .pill-btn.outline {
+body[data-company='boliden'][data-mode='mobile'] .pill-btn.outline {
   background: transparent;
   border-color: var(--accent);
   color: var(--fg);
@@ -694,7 +695,7 @@ body[data-company='boliden'] .pill-btn.outline {
   background: none;
 }
 
-body[data-company='boliden'] .step-footer {
+body[data-company='boliden'][data-mode='mobile'] .step-footer {
   color: var(--muted);
 }
 
@@ -729,7 +730,7 @@ body[data-company='boliden'] .step-footer {
   padding: 0 16px 24px;
 }
 
-body[data-company='boliden'] .camera-card {
+body[data-company='boliden'][data-mode='mobile'] .camera-card {
   background: transparent;
 }
 .bar {
@@ -770,7 +771,7 @@ button.primary {
   color: #fff;
 }
 
-body[data-company='boliden'] button {
+body[data-company='boliden'][data-mode='mobile'] button {
   border-color: rgba(228, 234, 239, 0.22);
   background: rgba(56, 73, 103, 0.35);
   color: var(--fg);
@@ -792,20 +793,38 @@ button.ghost {
   min-width: 250px;
   border-radius: 36px;
   font-size: 28px;
-  margin-left: auto;
-  margin-right: auto;
 }
 
 .camera-actions #btnRetake {
   border-radius: 36px;
   border-color: #d0d7e2;
   color: #1a1a1a;
+}
+
+/* Mobile-only: center and size action buttons uniformly. */
+body[data-mode='mobile'] .camera-actions #btnSnap,
+body[data-mode='mobile'] .camera-actions #btnRetake,
+body[data-mode='mobile'] .camera-actions #btnContinue {
   min-width: 250px;
   margin-left: auto;
   margin-right: auto;
 }
 
-body[data-company='boliden'] .camera-actions #btnRetake {
+/* Mobile-only: after capture, Take picture is hidden; Continue sits above Retake. */
+body[data-mode='mobile'] .camera-actions #btnContinue {
+  order: 1;
+}
+body[data-mode='mobile'] .camera-actions #btnRetake {
+  order: 2;
+}
+
+body[data-mode='mobile'] .camera-actions #btnContinue,
+body[data-mode='mobile'] .camera-actions #btnRetake {
+  width: min(520px, 90vw);
+  max-width: min(520px, 90vw);
+}
+
+body[data-company='boliden'][data-mode='mobile'] .camera-actions #btnRetake {
   border-color: rgba(228, 234, 239, 0.28);
   color: var(--fg);
 }
@@ -996,7 +1015,7 @@ img {
   max-width: 500px;
 }
 
-body[data-company='boliden'] .share-instruction {
+body[data-company='boliden'][data-mode='mobile'] .share-instruction {
   color: var(--muted);
 }
 
@@ -1053,7 +1072,7 @@ body[data-company='boliden'] .share-instruction {
   font-weight: 500;
 }
 
-body[data-company='boliden'] .social-share-btn {
+body[data-company='boliden'][data-mode='mobile'] .social-share-btn {
   border-color: rgba(228, 234, 239, 0.22);
   background: rgba(56, 73, 103, 0.35);
   color: var(--fg);
@@ -1139,7 +1158,7 @@ body[data-mode='mobile'] .share-social-grid {
   line-height: 1.5;
 }
 
-body[data-company='boliden'] .welcome-title {
+body[data-company='boliden'][data-mode='mobile'] .welcome-title {
   color: var(--accent);
 }
 
@@ -1231,6 +1250,7 @@ body[data-mode='mobile'] .camera-actions {
 
 body[data-mode='mobile'] .camera-actions #btnSnap,
 body[data-mode='mobile'] .camera-actions #btnRetake,
+body[data-mode='mobile'] .camera-actions #btnContinue,
 body[data-mode='mobile'] .result-actions .pill-btn,
 body[data-mode='mobile'] .result-container #btnRestart {
   width: min(360px, 90vw);

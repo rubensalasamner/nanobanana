@@ -118,11 +118,6 @@
     </style>
   </head>
   <body data-output-aspect="1:1">
-    <div class="deploy-banner deploy-banner--hidden" id="deployBanner" aria-live="polite">
-      <span class="deploy-banner__label">Deployed</span>
-      <span class="deploy-banner__value" id="deployStamp">loading…</span>
-    </div>
-
     <div
       class="step-nav"
       id="stepNav"
@@ -427,6 +422,12 @@
                 class="ghost hidden"
               >
                 Retake
+              </button>
+              <button
+                id="btnContinue"
+                class="primary hidden"
+              >
+                Continue, I'm good
               </button>
               <input
                 id="nativeCaptureInput"

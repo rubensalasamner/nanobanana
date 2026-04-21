@@ -21,6 +21,7 @@ const btnSnap = document.getElementById('btnSnap');
 const btnSnapText = document.getElementById('btnSnapText');
 const btnSnapSpinner = document.getElementById('btnSnapSpinner');
 const btnRetake = document.getElementById('btnRetake');
+const btnContinue = document.getElementById('btnContinue');
 const nativeCaptureInput = document.getElementById('nativeCaptureInput');
 const btnApply = document.getElementById('btnApply');
 const btnDownload = document.getElementById('btnDownload');
@@ -307,7 +308,7 @@ let styleLoadingTimer = null;
 let styleLoadingIndex = 0;
 let styleDotsTimer = null;
 const STYLE_LINE_MS = 4400;
-const STYLE_DOTS_MAX = 4;
+const STYLE_DOTS_MAX = 7;
 
 function ensureStyleLoadingMarkup() {
   if (!styleLoadingLine) return;
@@ -370,7 +371,8 @@ function startDotsAnimation() {
   if (styleDotsTimer) clearInterval(styleDotsTimer);
   let dotCount = 0;
   // Dots animate 2× faster than the line cadence (user feedback).
-  const stepMs = Math.max(125, Math.round(STYLE_LINE_MS / (STYLE_DOTS_MAX * 2)));
+  // And each dot appears 50% faster (i.e. 1.5× cadence).
+  const stepMs = Math.max(85, Math.round(STYLE_LINE_MS / (STYLE_DOTS_MAX * 2 * 1.5)));
   styleDotsTimer = setInterval(() => {
     dotCount = Math.min(STYLE_DOTS_MAX, dotCount + 1);
     for (let i = 0; i < dotEls.length; i++) {
@@ -452,16 +454,19 @@ function checkImageUrlExists(url) {
 }
 
 function applyBolidenBranding() {
-  const brandEls = document.querySelectorAll('.camera-brand, .share-brand');
-  brandEls.forEach((el) => {
-    el.replaceChildren();
-    const img = document.createElement('img');
-    img.src = './assets/images/boliden/logo/Boliden logo 2025 WHITE.png';
-    img.alt = 'Boliden';
-    img.decoding = 'async';
-    img.loading = 'eager';
-    el.appendChild(img);
-  });
+  // Logo/image branding is mobile-only; booth keeps the original text brand.
+  if (appMode === APP_MODES.MOBILE) {
+    const brandEls = document.querySelectorAll('.camera-brand, .share-brand');
+    brandEls.forEach((el) => {
+      el.replaceChildren();
+      const img = document.createElement('img');
+      img.src = './assets/images/boliden/logo/Boliden logo 2025 WHITE.png';
+      img.alt = 'Boliden';
+      img.decoding = 'async';
+      img.loading = 'eager';
+      el.appendChild(img);
+    });
+  }
 
   if (styleTitle) styleTitle.textContent = getStyleTitleDefaultText();
   if (apiStatus) {
@@ -674,8 +679,10 @@ async function startCamera() {
     }
     if (btnSnap) {
       btnSnap.disabled = false;
+      btnSnap.classList.remove('hidden');
     }
     btnRetake.classList.add('hidden');
+    if (btnContinue) btnContinue.classList.add('hidden');
 
     // Ensure snapshot flag is reset when camera is ready
     isTakingSnapshot = false;
@@ -708,9 +715,13 @@ function setupNativeMobileCameraStep() {
   if (!photo?.src) {
     photo.classList.add('hidden');
   }
+  if (btnContinue) btnContinue.classList.add('hidden');
   if (btnSnapSpinner) btnSnapSpinner.classList.add('hidden');
   if (btnSnapText) btnSnapText.textContent = 'Take picture';
-  if (btnSnap) btnSnap.disabled = false;
+  if (btnSnap) {
+    btnSnap.disabled = false;
+    btnSnap.classList.remove('hidden');
+  }
   if (!latestBlob) {
     camStatus.textContent =
       companyId === COMPANY_IDS.BOLIDEN
@@ -769,15 +780,11 @@ async function handleNativeCaptureChange(event) {
     tmpCtx.drawImage(croppedImg, 0, 0, upW, upH);
     latestBlob = await toBlobAsync(tmp, 'image/jpeg', 0.85);
 
+    if (btnSnap) btnSnap.classList.add('hidden');
     btnRetake.classList.remove('hidden');
+    if (btnContinue) btnContinue.classList.remove('hidden');
     btnApply.disabled = !selectedPrompt;
     camStatus.textContent = 'Snapshot captured.';
-
-    if (styleStepTimeout) clearTimeout(styleStepTimeout);
-    styleStepTimeout = setTimeout(() => {
-      styleStepTimeout = null;
-      showStep('style');
-    }, 600);
   } catch (err) {
     camStatus.textContent = 'Could not process captured image.';
     console.error('Native capture processing failed:', err);
@@ -896,20 +903,25 @@ async function takeSnapshot() {
   if (stylePreview) {
     stylePreview.src = croppedDataUrl;
   }
-  btnRetake.classList.remove('hidden');
+  if (appMode === APP_MODES.MOBILE) {
+    if (btnSnap) btnSnap.classList.add('hidden');
+    btnRetake.classList.remove('hidden');
+    if (btnContinue) btnContinue.classList.remove('hidden');
+  } else {
+    btnRetake.classList.remove('hidden');
+  }
   btnApply.disabled = !selectedPrompt;
   camStatus.textContent = 'Snapshot captured.';
 
-  // Reset flag after snapshot is complete
-  isTakingSnapshot = false;
-
-  if (styleStepTimeout) {
-    clearTimeout(styleStepTimeout);
+  if (appMode !== APP_MODES.MOBILE) {
+    if (styleStepTimeout) clearTimeout(styleStepTimeout);
+    styleStepTimeout = setTimeout(() => {
+      styleStepTimeout = null;
+      showStep('style');
+    }, 2000);
   }
-  styleStepTimeout = setTimeout(() => {
-    styleStepTimeout = null; // Clear before calling showStep so guard doesn't block
-    showStep('style');
-  }, 2000);
+
+  isTakingSnapshot = false;
 }
 
 function retake() {
@@ -918,6 +930,7 @@ function retake() {
 
   photo.classList.add('hidden');
   video.classList.remove('hidden');
+  if (btnSnap) btnSnap.classList.remove('hidden');
   btnApply.disabled = true;
   btnDownload.disabled = true;
   btnPrint.disabled = true;
@@ -925,6 +938,7 @@ function retake() {
   latestBlob = null;
   latestShare = null;
   selectedSceneId = null;
+  if (btnContinue) btnContinue.classList.add('hidden');
   // Hide style preview when retaking
   if (stylePreview) {
     stylePreview.classList.add('hidden');
@@ -1034,6 +1048,9 @@ async function callImageEditAndShareAPI(imageBlob, prompt, sceneId) {
 function setStyleTitleGenerating(isGenerating) {
   if (!styleTitle) return;
   styleTitle.textContent = isGenerating ? 'Generating Image' : getStyleTitleDefaultText();
+  // Witty loading line + focused-card animation are mobile-only.
+  // Booth keeps the per-card spinner (see setStyleCardLoading).
+  if (appMode !== APP_MODES.MOBILE) return;
   if (isGenerating) {
     startStyleLoadingLines();
     enterStyleLoadingMode(selectedCardKey);
@@ -1060,12 +1077,25 @@ function getSelectedStyleCard(cardKey) {
 function setStyleCardLoading(cardKey, isLoading) {
   const card = getSelectedStyleCard(cardKey);
   if (!card) return;
+  // Mobile uses the focused-card + global loading line animation,
+  // so skip the inline spinner swap there. Booth keeps the original spinner.
+  if (appMode !== APP_MODES.MOBILE) {
+    if (!card.dataset.originalText) {
+      card.dataset.originalText = card.textContent.trim();
+    }
+    card.innerHTML = isLoading
+      ? '<span class="style-card-spinner"></span>'
+      : card.dataset.originalText;
+  }
   card.disabled = isLoading;
 }
 
 function restoreStyleCards() {
   if (!grid) return;
   for (const card of grid.querySelectorAll('[data-card-key]')) {
+    if (appMode !== APP_MODES.MOBILE && card.dataset.originalText) {
+      card.textContent = card.dataset.originalText;
+    }
     card.disabled = false;
   }
 }
@@ -1324,6 +1354,13 @@ async function applyPreset() {
 onTap(btnStart, startCamera);
 onTap(btnSnap, takeSnapshot);
 onTap(btnRetake, retake);
+if (btnContinue) {
+  onTap(btnContinue, () => {
+    if (!latestBlob) return;
+    btnContinue.classList.add('hidden');
+    showStep('style');
+  });
+}
 onTap(btnApply, applyPreset);
 if (grid) {
   grid.addEventListener('pointerup', handlePresetTap);
