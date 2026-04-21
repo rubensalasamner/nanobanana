@@ -97,13 +97,34 @@ export function getQueryParam(req, name) {
 }
 
 export async function loadPublicImageSafe(publicDir, relativePath, log) {
-  try {
-    const imagePath = join(publicDir, ...relativePath.split('/'));
+  const tryRead = async (rp) => {
+    const imagePath = join(publicDir, ...rp.split('/'));
     return await readFile(imagePath);
+  };
+
+  try {
+    return await tryRead(relativePath);
   } catch (err) {
     log?.('warn', 'scene.image.missing', { relativePath, message: err?.message });
-    return null;
   }
+
+  // Back-compat / resilience: Boliden scene assets were moved under
+  // assets/images/boliden/prompt-backgrounds/. If callers still provide the old
+  // path, fall back automatically so both Vercel (/api) and local server don't
+  // break on folder reshuffles.
+  if (relativePath?.startsWith('assets/images/boliden/') && !relativePath.includes('/prompt-backgrounds/')) {
+    const filename = relativePath.slice('assets/images/boliden/'.length);
+    const fallback = `assets/images/boliden/prompt-backgrounds/${filename}`;
+    try {
+      const buf = await tryRead(fallback);
+      log?.('log', 'scene.image.fallbackPath', { from: relativePath, to: fallback });
+      return buf;
+    } catch (err2) {
+      log?.('warn', 'scene.image.missing', { relativePath: fallback, message: err2?.message });
+    }
+  }
+
+  return null;
 }
 
 export async function describePersonBrief(fileMime, fileBuf, reqId, log, apiKey) {
