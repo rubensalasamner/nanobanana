@@ -11,6 +11,7 @@ import {
   resolveCodeformerFidelity,
   resolveFaceRestoreModel,
 } from './faceRestore.js';
+import { isFaceDetectEnabled } from './faceDetect.js';
 import {
   handleShareDownload,
   performBlobCleanup,
@@ -97,6 +98,10 @@ async function handleDiag(_req, res) {
     faceSwap: {
       enabled: isFaceSwapAvailable(),
       model: process.env.REPLICATE_FACE_SWAP_MODEL || 'cdingram/face-swap (pinned)',
+    },
+    targetedFaceSwap: {
+      enabled: isFaceDetectEnabled(),
+      detectModel: process.env.FACE_DETECT_MODEL || 'gemini-2.5-flash',
     },
     faceRestore: {
       enabled: isFaceRestoreEnabled(),

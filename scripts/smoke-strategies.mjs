@@ -10,6 +10,8 @@ import {
   isFaceRestoreEnabled,
   resolveCodeformerFidelity,
 } from '../api/faceRestore.js';
+import { isFaceDetectEnabled } from '../api/faceDetect.js';
+import { isTargetedFaceSwapAvailable } from '../api/targetedFaceSwap.js';
 
 const aspectPreset = getOutputAspectPreset('16:9');
 const personBrief = [
@@ -282,7 +284,53 @@ function checkFaceRestoreFlags() {
   console.log(JSON.stringify({ faceRestoreChecks: 'ok' }));
 }
 
+function checkTargetedFaceSwapFlags() {
+  const savedKey = process.env.GEMINI_API_KEY;
+  const savedFlag = process.env.ENABLE_TARGETED_FACE_SWAP;
+
+  delete process.env.GEMINI_API_KEY;
+  delete process.env.ENABLE_TARGETED_FACE_SWAP;
+  if (isFaceDetectEnabled()) {
+    throw new Error('targeted face-swap must be disabled without GEMINI_API_KEY');
+  }
+  if (isTargetedFaceSwapAvailable()) {
+    throw new Error('isTargetedFaceSwapAvailable must be false without GEMINI_API_KEY');
+  }
+
+  process.env.GEMINI_API_KEY = 'fake-for-smoke';
+  delete process.env.ENABLE_TARGETED_FACE_SWAP;
+  if (!isFaceDetectEnabled()) {
+    throw new Error('targeted face-swap should default to enabled when key is present');
+  }
+  if (!isTargetedFaceSwapAvailable()) {
+    throw new Error('isTargetedFaceSwapAvailable must be true when key is present by default');
+  }
+
+  process.env.ENABLE_TARGETED_FACE_SWAP = 'false';
+  if (isFaceDetectEnabled()) {
+    throw new Error('ENABLE_TARGETED_FACE_SWAP=false must disable targeted face-swap');
+  }
+
+  process.env.ENABLE_TARGETED_FACE_SWAP = '0';
+  if (isFaceDetectEnabled()) {
+    throw new Error('ENABLE_TARGETED_FACE_SWAP=0 must disable targeted face-swap');
+  }
+
+  process.env.ENABLE_TARGETED_FACE_SWAP = 'true';
+  if (!isFaceDetectEnabled()) {
+    throw new Error('ENABLE_TARGETED_FACE_SWAP=true must enable targeted face-swap');
+  }
+
+  if (savedKey === undefined) delete process.env.GEMINI_API_KEY;
+  else process.env.GEMINI_API_KEY = savedKey;
+  if (savedFlag === undefined) delete process.env.ENABLE_TARGETED_FACE_SWAP;
+  else process.env.ENABLE_TARGETED_FACE_SWAP = savedFlag;
+
+  console.log(JSON.stringify({ targetedFaceSwapChecks: 'ok' }));
+}
+
 checkPrompts();
 checkSelector();
 checkFaceRestoreFlags();
+checkTargetedFaceSwapFlags();
 console.log('smoke ok');

@@ -130,6 +130,19 @@ Set these in your Vercel project settings:
   post-processing — only instruction length. Use when debugging `IMAGE_OTHER`
   or token load. Default off. Logs include `slimPrompts: true` on Boliden
   strategy requests.
+- **ENABLE_TARGETED_FACE_SWAP** - `true` (default) / `false`. Controls whether
+  the swap step first tries a crop-based swap targeted at the newly-added face
+  (detected via Gemini bbox) before falling back to full-frame swap. Targeted
+  swap prevents `cdingram/face-swap` from re-targeting an existing worker in
+  multi-person scenes. Adds ~1–3s per request for the detection call. Any
+  failure falls back to full-frame swap (no regression). Requires
+  `GEMINI_API_KEY`; automatically disabled without it.
+- **FACE_DETECT_MODEL** - Override the Gemini model used for bbox detection
+  (default: `gemini-2.5-flash`). Must be a Gemini 2.5+ model that supports
+  image input and structured bbox output.
+- **FACE_SWAP_TIMEOUT_MS** - Hard cap (ms) on a single Replicate face-swap
+  call (default `45000`). Applies to both full-frame and targeted crop swaps.
+  Timeouts are logged as `faceSwap.timeout` and degrade gracefully.
 
 ### Generation Strategies
 
@@ -146,9 +159,12 @@ The image pipeline uses a strategy pattern (`api/strategies/`):
      Gated on `ENABLE_FACE_RESTORE` (default true) and `REPLICATE_API_TOKEN`.
 
   The response's `strategyName` reflects which passes ran:
-  - `two-pass-face-swap+restore` — all three passes succeeded.
-  - `two-pass-face-swap:no-restore` — passes 1+2 succeeded; restore was
-    disabled, errored, or timed out.
+  - `two-pass-face-swap+targeted+restore` — all three passes succeeded and
+    the swap ran in targeted (crop-based) mode.
+  - `two-pass-face-swap+restore` — all three passes succeeded with a
+    full-frame swap (targeted path disabled, not available, or fell through).
+  - `two-pass-face-swap+targeted:no-restore` / `two-pass-face-swap:no-restore`
+    — passes 1+2 succeeded; restore was disabled, errored, or timed out.
   - `two-pass-face-swap:pass1-only` — pass 1 succeeded; swap failed (e.g.
     Replicate 402, token invalid). Output face is the Gemini placeholder.
 - `single-pass-gemini` - Boliden fallback when no Replicate token, or when a

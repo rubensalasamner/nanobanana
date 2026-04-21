@@ -13,6 +13,14 @@
 // Pass 2 + Pass 3 are delegated to api/postProcessFace.js so the same
 // identity-locking step can be reused by the single-pass fallback strategy.
 //
+// Targeted swap: when the original scene image is available (as it is for any
+// registered Boliden scene), postProcessFace will first try to swap only a
+// cropped region around the newly-added face (via api/targetedFaceSwap.js and
+// api/faceDetect.js). That stops the Replicate swap model from re-targeting
+// an existing worker in multi-person scenes. Any failure along that path
+// transparently falls back to a full-frame swap — a targeted failure never
+// degrades output vs the previous pipeline.
+//
 // Why pass 1 reuses the insert prompt instead of a separate "scene-only"
 // prompt: Gemini 2.5 Flash Image reliably handles the 2-image composite mode
 // (scene + selfie). A 1-image "add a generic worker" variant was tried and
@@ -97,6 +105,11 @@ export const twoPassFaceSwapStrategy = {
     const post = await applyFaceSwapAndRestore({
       image: pass1Image,
       selfie: ctx.selfie,
+      // Passing the original scene unlocks targeted (crop-based) face swap,
+      // which stops cdingram/face-swap from re-targeting an existing worker
+      // in multi-person scenes. Falls back to full-frame swap on any failure.
+      originalScene: ctx.sceneImage ?? null,
+      apiKey: ctx.geminiApiKey,
       reqId: ctx.reqId,
       log: ctx.log,
     });
@@ -112,17 +125,21 @@ export const twoPassFaceSwapStrategy = {
       };
     }
 
+    const targetedSuffix = post.targeted ? '+targeted' : '';
+
     if (post.outcome === 'no-restore') {
       ctx.log(ctx.reqId, 'log', 'strategy.twoPass.pass3.skipped', {
         reason: 'face-restore disabled, missing token, or returned null',
+        targeted: post.targeted,
       });
       return {
         image: post.image,
-        strategyName: `${this.name}:no-restore`,
+        strategyName: `${this.name}${targetedSuffix}:no-restore`,
         debug: {
           pass1Bytes: pass1Image.buf.length,
           pass2Bytes: post.swappedImage?.buf.length,
           restoreSkipped: true,
+          targeted: post.targeted,
         },
         debugImages: {
           pass1: pass1Image,
@@ -134,14 +151,16 @@ export const twoPassFaceSwapStrategy = {
     ctx.log(ctx.reqId, 'log', 'strategy.twoPass.pass3.ok', {
       mime: post.image.mime,
       bytes: post.image.buf.length,
+      targeted: post.targeted,
     });
     return {
       image: post.image,
-      strategyName: `${this.name}+restore`,
+      strategyName: `${this.name}${targetedSuffix}+restore`,
       debug: {
         pass1Bytes: pass1Image.buf.length,
         pass2Bytes: post.swappedImage?.buf.length,
         pass3Bytes: post.restoredImage?.buf.length,
+        targeted: post.targeted,
       },
       debugImages: {
         pass1: pass1Image,

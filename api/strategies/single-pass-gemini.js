@@ -12,11 +12,11 @@
 // serve a Gemini-painted face with no identity lock. Applying the same Pass 2
 // + Pass 3 used by two-pass closes that fidelity gap.
 //
-// Known caveat: `cdingram/face-swap` targets the most prominent face in the
-// input image. In scenes with multiple existing workers, if Gemini rendered
-// the new person smaller than an existing worker, the swap can re-target an
-// existing worker. Accepted tradeoff for now — fixing it requires face-count
-// gating or a face-swap model that accepts a source-face location hint.
+// When the scene image is available, the shared post-processor uses
+// targeted (crop-based) face swap driven by Gemini bbox detection so the
+// Replicate swap model cannot re-target an existing worker in multi-person
+// scenes. Any failure in the targeted path falls back transparently to the
+// old full-frame swap.
 //
 // Falls back to a selfie-only (no scene reference) prompt if the scene image
 // could not be loaded.
@@ -27,12 +27,13 @@ import { resolveBolidenSlimPrompts } from '../bolidenPromptOptions.js';
 import { runGeminiEdit } from '../geminiClient.js';
 import { applyFaceSwapAndRestore, isPostProcessFaceAvailable } from '../postProcessFace.js';
 
-function strategyNameFromOutcome(baseName, outcome) {
+function strategyNameFromOutcome(baseName, outcome, targeted) {
+  const targetedSuffix = targeted ? '+targeted' : '';
   switch (outcome) {
     case 'ok':
-      return `${baseName}+swap+restore`;
+      return `${baseName}${targetedSuffix}+swap+restore`;
     case 'no-restore':
-      return `${baseName}+swap`;
+      return `${baseName}${targetedSuffix}+swap`;
     case 'no-swap':
     case 'skipped':
     default:
@@ -94,16 +95,19 @@ export const singlePassGeminiStrategy = {
     const post = await applyFaceSwapAndRestore({
       image,
       selfie: ctx.selfie,
+      originalScene: ctx.sceneImage ?? null,
+      apiKey: ctx.geminiApiKey,
       reqId: ctx.reqId,
       log: ctx.log,
     });
 
-    const strategyName = strategyNameFromOutcome(this.name, post.outcome);
+    const strategyName = strategyNameFromOutcome(this.name, post.outcome, post.targeted);
 
     ctx.log(ctx.reqId, 'log', 'strategy.singlePass.postProcess', {
       outcome: post.outcome,
       swapped: post.swapped,
       restored: post.restored,
+      targeted: post.targeted,
       finalName: strategyName,
     });
 
@@ -114,6 +118,7 @@ export const singlePassGeminiStrategy = {
         hasScene,
         postProcessed: post.swapped,
         postProcessOutcome: post.outcome,
+        targeted: post.targeted,
         geminiBytes: image.buf.length,
         swapBytes: post.swappedImage?.buf.length,
         restoreBytes: post.restoredImage?.buf.length,

@@ -54,7 +54,9 @@ export function buildSceneIntegrationBlock(scene, hasSceneImage, options = {}) {
     parts.push(
       'Keep everyone and everything already in image 1. ADD one additional worker (not a clone of an existing figure) — the scene must show one more person than image 1. Wide/medium-wide documentary shot; new person in side third, mid-ground, natural pose alongside the existing crew — not centered, not foreground-hero, not a portrait. Head ~10–14% of frame height.',
     );
-    parts.push('New person face angle: 3/4 or frontal to camera (not profile).');
+    parts.push(
+      'New person face + gaze: head 3/4 or frontal to camera AND eyes looking directly at the camera lens. Not profile, not looking away, not looking at other workers.'
+    );
     if (placementHint) parts.push(`Placement: ${placementHint}`);
     parts.push(
       `PPE: ${scene.ppeHint} (equipment only; do not change face shape).`
@@ -71,7 +73,9 @@ export function buildSceneIntegrationBlock(scene, hasSceneImage, options = {}) {
     parts.push(
       'Preserve the full composition, framing, environment, and every existing worker from image 1. Do not remove, replace, or relocate any existing worker. You are ADDING one new person to the scene, not substituting anyone.'
     );
-    parts.push('New person face angle: 3/4 or frontal to camera (not profile).');
+    parts.push(
+      'New person face + gaze: head 3/4 or frontal to camera AND eyes looking directly at the camera lens. Not profile, not looking away, not looking at other workers.'
+    );
     if (placementHint) {
       parts.push(`Specific placement for this scene: ${placementHint}`);
     }
@@ -81,7 +85,7 @@ export function buildSceneIntegrationBlock(scene, hasSceneImage, options = {}) {
       '- Horizontal position: left third or right third of the frame. Never dead-center.',
       '- Depth: mid-ground or background, beside or slightly behind existing workers/equipment in image 1. Not in the foreground, not closer to the camera than existing workers.',
       '- Relative size: match the apparent size of existing workers in image 1 — similar head size, similar body height in frame. If image 1 contains no people, the new person\'s body fills roughly one-quarter of the frame height and their head fills roughly 6–10% of the frame height.',
-      '- Pose: standing or working naturally in the scene, facing the camera or turned toward the activity. Not a posed portrait.',
+      '- Pose: standing or working naturally in the scene, but body and head turned toward the camera with direct eye contact. Not a posed portrait, not looking at other workers.',
       '- Match perspective, eye-line, ground plane, and focal length with image 1.'
     );
   } else {

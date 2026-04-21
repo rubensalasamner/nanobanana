@@ -25,6 +25,7 @@ import {
   resolveCodeformerFidelity,
   resolveFaceRestoreModel,
 } from './api/faceRestore.js';
+import { isFaceDetectEnabled } from './api/faceDetect.js';
 
 // Exit early if running on Vercel (should not happen, but safety check)
 if (process.env.VERCEL) {
@@ -130,6 +131,10 @@ app.get('/diag', (_req, res) => {
     faceSwap: {
       enabled: isFaceSwapAvailable(),
       model: process.env.REPLICATE_FACE_SWAP_MODEL || 'cdingram/face-swap (pinned)',
+    },
+    targetedFaceSwap: {
+      enabled: isFaceDetectEnabled(),
+      detectModel: process.env.FACE_DETECT_MODEL || 'gemini-2.5-flash',
     },
     faceRestore: {
       enabled: isFaceRestoreEnabled(),
@@ -297,5 +302,10 @@ app.listen(port, () => {
     `Face-restore (pass 3) ${
       isFaceRestoreEnabled() ? 'ENABLED' : 'disabled'
     } — codeformer_fidelity ${resolveCodeformerFidelity()} — model ${resolveFaceRestoreModel()}`
+  );
+  console.log(
+    `Targeted face-swap (crop-based via Gemini bbox) ${
+      isFaceDetectEnabled() ? 'ENABLED' : 'disabled'
+    } — detect model ${process.env.FACE_DETECT_MODEL || 'gemini-2.5-flash'}`
   );
 });
