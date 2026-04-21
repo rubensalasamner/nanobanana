@@ -46,6 +46,54 @@
   font-display: swap;
 }
 
+@font-face {
+  font-family: 'Segoe Pro';
+  src: url('./assets/fonts/SegoePro/SegoePro-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Segoe Pro';
+  src: url('./assets/fonts/SegoePro/SegoePro-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Segoe Pro';
+  src: url('./assets/fonts/SegoePro/SegoePro-Semibold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Segoe Pro';
+  src: url('./assets/fonts/SegoePro/SegoePro-SemiboldItalic.ttf') format('truetype');
+  font-weight: 600;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Segoe Pro';
+  src: url('./assets/fonts/SegoePro/SegoePro-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Segoe Pro';
+  src: url('./assets/fonts/SegoePro/SegoePro-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
 :root {
   --bg: #0b0f14;
   --fg: #e7ebef;
@@ -60,6 +108,14 @@ body[data-company='boliden'] {
   --muted: rgba(228, 234, 239, 0.72);
   --card: #384967; /* blue */
   --accent: #81a4c8; /* light blue */
+  font-family:
+    'Segoe Pro',
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    Ubuntu;
 }
 * {
   box-sizing: border-box;
@@ -192,6 +248,16 @@ body[data-company='boliden'] #step-share {
   font-size: 33px;
   font-weight: 600;
   color: var(--accent);
+}
+
+.camera-brand img,
+.share-brand img {
+  display: block;
+  height: 34px;
+  width: auto;
+  max-width: min(320px, 82vw);
+  object-fit: contain;
+  background: transparent;
 }
 
 .result-container .camera-brand {

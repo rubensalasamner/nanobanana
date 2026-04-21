@@ -430,7 +430,13 @@ function checkImageUrlExists(url) {
 function applyBolidenBranding() {
   const brandEls = document.querySelectorAll('.camera-brand, .share-brand');
   brandEls.forEach((el) => {
-    el.textContent = 'Boliden';
+    el.replaceChildren();
+    const img = document.createElement('img');
+    img.src = './assets/images/boliden/logo/Boliden logo 2025 WHITE.png';
+    img.alt = 'Boliden';
+    img.decoding = 'async';
+    img.loading = 'eager';
+    el.appendChild(img);
   });
 
   if (styleTitle) styleTitle.textContent = getStyleTitleDefaultText();
