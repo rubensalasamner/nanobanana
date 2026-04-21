@@ -206,6 +206,23 @@ body[data-company='boliden'] #step-share {
   font-weight: 400;
 }
 
+.style-loading-line {
+  margin: 0 0 22px 0;
+  padding: 0 12px;
+  max-width: min(720px, 92vw);
+  font-size: clamp(16px, 2.2vw, 20px);
+  line-height: 1.35;
+  color: rgba(0, 0, 0, 0.68);
+  text-wrap: balance;
+  transition:
+    opacity 260ms ease,
+    transform 260ms ease;
+}
+
+body[data-company='boliden'] .style-loading-line {
+  color: var(--muted);
+}
+
 .result-title {
   margin: 0 0 40px 0;
   font-size: clamp(36px, 5vw, 48px);

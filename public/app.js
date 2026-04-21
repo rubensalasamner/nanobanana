@@ -55,6 +55,7 @@ const printingMessage = document.getElementById('printingMessage');
 const stepFooter = document.querySelector('.step-footer');
 const styleTitle = document.querySelector('.style-title');
 const stylePreview = document.getElementById('stylePreview');
+const styleLoadingLine = document.getElementById('styleLoadingLine');
 const shareQRCode = document.getElementById('shareQRCode');
 const shareQrWrapper = document.getElementById('shareQrWrapper');
 const shareInstruction = document.getElementById('shareInstruction');
@@ -291,6 +292,58 @@ const useNativeMobileCapture = shouldUseNativeMobileCapture();
 let selectedSceneId = null;
 let selectedPipeline = null;
 let selectedCardKey = null;
+
+// ----- Style loading line -----
+const STYLE_LOADING_LINES = Object.freeze([
+  'Finding proper clothes and a helmet that fits…',
+  'Checking PPE compliance (and tightening that chin strap)…',
+  'Dusting off the hi-vis jacket for extra authenticity…',
+  'Matching mine lighting so you don’t look copy-pasted…',
+  'Calibrating reflective stripes for maximum safety vibes…',
+  'Asking the break room coffee machine for permission…',
+  'Aligning shadows and grain like a real on-site photo…',
+]);
+let styleLoadingTimer = null;
+let styleLoadingIndex = 0;
+
+function setStyleLoadingLine(text) {
+  if (!styleLoadingLine) return;
+  styleLoadingLine.textContent = text;
+  try {
+    styleLoadingLine.animate(
+      [
+        { opacity: 0, transform: 'translateY(6px)' },
+        { opacity: 1, transform: 'translateY(0px)' },
+      ],
+      { duration: 450, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' }
+    );
+  } catch {
+    // Older browsers: no Web Animations API. Text still updates.
+  }
+}
+
+function startStyleLoadingLines() {
+  if (!styleLoadingLine || STYLE_LOADING_LINES.length === 0) return;
+  if (styleLoadingTimer) return;
+  styleLoadingLine.classList.remove('hidden');
+  styleLoadingIndex = Math.floor(Math.random() * STYLE_LOADING_LINES.length);
+  setStyleLoadingLine(STYLE_LOADING_LINES[styleLoadingIndex]);
+  styleLoadingTimer = setInterval(() => {
+    styleLoadingIndex = (styleLoadingIndex + 1) % STYLE_LOADING_LINES.length;
+    setStyleLoadingLine(STYLE_LOADING_LINES[styleLoadingIndex]);
+  }, 2200);
+}
+
+function stopStyleLoadingLines() {
+  if (styleLoadingTimer) {
+    clearInterval(styleLoadingTimer);
+    styleLoadingTimer = null;
+  }
+  if (styleLoadingLine) {
+    styleLoadingLine.classList.add('hidden');
+    styleLoadingLine.textContent = '';
+  }
+}
 
 function shouldShowDeployBanner() {
   return appMode === APP_MODES.MOBILE && companyId === COMPANY_IDS.BOLIDEN;
@@ -887,6 +940,8 @@ async function callImageEditAndShareAPI(imageBlob, prompt, sceneId) {
 function setStyleTitleGenerating(isGenerating) {
   if (!styleTitle) return;
   styleTitle.textContent = isGenerating ? 'Generating Image...' : getStyleTitleDefaultText();
+  if (isGenerating) startStyleLoadingLines();
+  else stopStyleLoadingLines();
 }
 
 function setApplyButtonLoading(isLoading) {
@@ -906,19 +961,12 @@ function getSelectedStyleCard(cardKey) {
 function setStyleCardLoading(cardKey, isLoading) {
   const card = getSelectedStyleCard(cardKey);
   if (!card) return;
-  if (!card.dataset.originalText) {
-    card.dataset.originalText = card.textContent.trim();
-  }
-  card.innerHTML = isLoading ? '<span class="style-card-spinner"></span>' : card.dataset.originalText;
   card.disabled = isLoading;
 }
 
 function restoreStyleCards() {
   if (!grid) return;
   for (const card of grid.querySelectorAll('[data-card-key]')) {
-    if (card.dataset.originalText) {
-      card.innerHTML = card.dataset.originalText;
-    }
     card.disabled = false;
   }
 }
