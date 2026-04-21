@@ -897,7 +897,10 @@ function setApplyButtonLoading(isLoading) {
 
 function getSelectedStyleCard(cardKey) {
   if (!grid || !cardKey) return null;
-  return grid.querySelector(`[data-card-key="${CSS.escape(cardKey)}"]`);
+  for (const card of grid.querySelectorAll('[data-card-key]')) {
+    if (card.dataset.cardKey === cardKey) return card;
+  }
+  return null;
 }
 
 function setStyleCardLoading(cardKey, isLoading) {
