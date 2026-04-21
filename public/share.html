@@ -141,7 +141,8 @@
       }
 
       .share-actions button,
-      .share-actions a.button {
+      .share-actions a.button,
+      .share-links a.button {
         appearance: none;
         border: none;
         background: #4285f4;
@@ -155,12 +156,18 @@
         cursor: pointer;
         font-family: inherit;
         transition: opacity 0.2s;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        line-height: 1;
+        box-sizing: border-box;
       }
 
       @media (max-width: 768px) {
         .share-actions button,
         .share-actions a.button,
-        .share-links a {
+        .share-links a.button {
           padding: 16px 24px;
           font-size: 20px;
           min-width: 200px;
@@ -168,7 +175,8 @@
       }
 
       .share-actions button:hover,
-      .share-actions a.button:hover {
+      .share-actions a.button:hover,
+      .share-links a.button:hover {
         opacity: 0.9;
       }
 
@@ -178,7 +186,8 @@
       }
 
       .share-actions button.secondary,
-      .share-actions a.button.secondary {
+      .share-actions a.button.secondary,
+      .share-links a.button.secondary {
         background: transparent;
         border: 2px solid #4285f4;
         color: #4285f4;
@@ -190,12 +199,6 @@
         gap: 8px;
         justify-content: center;
         width: 100%;
-      }
-
-      .share-links a {
-        font-size: 28px;
-        padding: 20px 36px;
-        min-width: 250px;
       }
 
       .hidden {
