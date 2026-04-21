@@ -315,44 +315,67 @@ function ensureStyleLoadingMarkup() {
   styleLoadingLine.replaceChildren();
   const textSpan = document.createElement('span');
   textSpan.className = 'style-loading-text';
-  const dotsSpan = document.createElement('span');
-  dotsSpan.className = 'style-loading-dots';
-  styleLoadingLine.append(textSpan, dotsSpan);
+  const dotsWrap = document.createElement('span');
+  dotsWrap.className = 'style-loading-dots';
+  for (let i = 0; i < STYLE_DOTS_MAX; i++) {
+    const dot = document.createElement('span');
+    dot.className = 'style-loading-dot';
+    dot.textContent = '.';
+    dotsWrap.appendChild(dot);
+  }
+  styleLoadingLine.append(textSpan, dotsWrap);
 }
 
 function setStyleLoadingText(baseText) {
   if (!styleLoadingLine) return;
   ensureStyleLoadingMarkup();
   const textSpan = styleLoadingLine.querySelector('.style-loading-text');
-  const dotsSpan = styleLoadingLine.querySelector('.style-loading-dots');
-  if (textSpan) textSpan.textContent = baseText;
-  if (dotsSpan) dotsSpan.textContent = '';
-  try {
-    styleLoadingLine.animate(
-      [
-        { opacity: 0, transform: 'translateY(6px)' },
-        { opacity: 1, transform: 'translateY(0px)' },
-      ],
-      { duration: 450, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' }
-    );
-  } catch {
-    // Older browsers: no Web Animations API. Text still updates.
+  if (textSpan) {
+    // Smooth swap: fade out, swap text, fade in.
+    try {
+      const out = styleLoadingLine.animate(
+        [{ opacity: 1, transform: 'translateY(0px)' }, { opacity: 0, transform: 'translateY(6px)' }],
+        { duration: 200, easing: 'ease', fill: 'forwards' }
+      );
+      out.addEventListener(
+        'finish',
+        () => {
+          textSpan.textContent = baseText;
+          styleLoadingLine.animate(
+            [{ opacity: 0, transform: 'translateY(6px)' }, { opacity: 1, transform: 'translateY(0px)' }],
+            { duration: 320, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', fill: 'forwards' }
+          );
+        },
+        { once: true }
+      );
+    } catch {
+      textSpan.textContent = baseText;
+    }
   }
+  resetDots();
   startDotsAnimation();
+}
+
+function resetDots() {
+  if (!styleLoadingLine) return;
+  const dots = styleLoadingLine.querySelectorAll('.style-loading-dot');
+  for (const d of dots) d.classList.remove('is-on');
 }
 
 function startDotsAnimation() {
   if (!styleLoadingLine) return;
   ensureStyleLoadingMarkup();
-  const dotsSpan = styleLoadingLine.querySelector('.style-loading-dots');
-  if (!dotsSpan) return;
+  const dotEls = styleLoadingLine.querySelectorAll('.style-loading-dot');
+  if (!dotEls.length) return;
   if (styleDotsTimer) clearInterval(styleDotsTimer);
-  let dots = 0;
+  let dotCount = 0;
   // Dots animate 2× faster than the line cadence (user feedback).
   const stepMs = Math.max(125, Math.round(STYLE_LINE_MS / (STYLE_DOTS_MAX * 2)));
   styleDotsTimer = setInterval(() => {
-    dots = Math.min(STYLE_DOTS_MAX, dots + 1);
-    dotsSpan.textContent = '.'.repeat(dots);
+    dotCount = Math.min(STYLE_DOTS_MAX, dotCount + 1);
+    for (let i = 0; i < dotEls.length; i++) {
+      dotEls[i].classList.toggle('is-on', i < dotCount);
+    }
   }, stepMs);
 }
 
