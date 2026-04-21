@@ -54,6 +54,7 @@ export function buildSceneIntegrationBlock(scene, hasSceneImage, options = {}) {
     parts.push(
       'Keep everyone and everything already in image 1. ADD one additional worker (not a clone of an existing figure) — the scene must show one more person than image 1. Wide/medium-wide documentary shot; new person in side third, mid-ground, natural pose alongside the existing crew — not centered, not foreground-hero, not a portrait. Head ~10–14% of frame height.',
     );
+    parts.push('New person face angle: 3/4 or frontal to camera (not profile).');
     if (placementHint) parts.push(`Placement: ${placementHint}`);
     parts.push(
       `PPE: ${scene.ppeHint} (equipment only; do not change face shape).`
@@ -70,6 +71,7 @@ export function buildSceneIntegrationBlock(scene, hasSceneImage, options = {}) {
     parts.push(
       'Preserve the full composition, framing, environment, and every existing worker from image 1. Do not remove, replace, or relocate any existing worker. You are ADDING one new person to the scene, not substituting anyone.'
     );
+    parts.push('New person face angle: 3/4 or frontal to camera (not profile).');
     if (placementHint) {
       parts.push(`Specific placement for this scene: ${placementHint}`);
     }

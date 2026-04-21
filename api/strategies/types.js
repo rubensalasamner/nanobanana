@@ -43,6 +43,8 @@
  * @property {string} company               - Resolved company id.
  * @property {string|null} sceneId          - Raw scene id from the request (may be null).
  * @property {SceneDef|null} scene          - Resolved Boliden scene, or null for default company.
+ * @property {'mobile'|'booth'} [clientMode] - Client mode (mobile or booth).
+ * @property {'swap-only'|null} [pipeline]  - Optional pipeline override (e.g. swap-only).
  * @property {string} originalPrompt        - Raw prompt from the request (used by default strategy).
  * @property {string|null} personBrief      - Gemini-produced identity brief, or null if unavailable.
  * @property {AspectPreset} aspectPreset    - Output aspect preset.

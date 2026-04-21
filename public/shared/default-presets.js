@@ -107,6 +107,7 @@ export function renderDefaultPresetGrid(container, activePresetIds = null) {
     btn.className = 'style-card';
     btn.dataset.prompt = preset.prompt;
     btn.dataset.presetId = preset.id;
+    btn.dataset.cardKey = `preset:${preset.id}`;
     btn.textContent = preset.label;
     container.appendChild(btn);
   }

@@ -252,6 +252,9 @@ async function buildStrategyContext({
   const company = resolveCompanyId(String(fields.company ?? ''));
   const sceneId = String(fields.sceneId ?? '').trim() || null;
   const originalPrompt = String(fields.prompt ?? '');
+  const clientMode = fields.mode === 'mobile' ? 'mobile' : 'booth';
+  const pipelineRaw = String(fields.pipeline ?? '').trim().toLowerCase();
+  const pipeline = pipelineRaw === 'swap-only' ? 'swap-only' : null;
 
   const clientAspectId = resolveOutputAspectId(fields.aspect);
   const scene =
@@ -280,6 +283,8 @@ async function buildStrategyContext({
     company,
     sceneId,
     scene,
+    clientMode,
+    pipeline,
     originalPrompt,
     personBrief,
     aspectPreset,
@@ -375,6 +380,7 @@ export async function runEditAndSharePipeline({
     clientMode,
     company,
     sceneId,
+    pipeline: ctx.pipeline,
     outputAspect: ctx.aspectPreset.id,
     clientAspect: clientAspectId,
     aspectOverridden,

@@ -4,7 +4,7 @@
 
 import { BOLIDEN_SCENE_LIBRARY, COMPANY_IDS } from '../public/shared/company-scenes.js';
 import { buildInsertPrompt } from '../public/shared/boliden/index.js';
-import { defaultStrategy, selectStrategy, STRATEGIES } from '../api/strategies/index.js';
+import { defaultStrategy, faceSwapOnlyStrategy, selectStrategy, STRATEGIES } from '../api/strategies/index.js';
 import { getOutputAspectPreset } from '../public/shared/output-aspect.js';
 import {
   isFaceRestoreEnabled,
@@ -177,6 +177,21 @@ function checkSelector() {
   });
   if (bolidenTwoPass?.name !== 'two-pass-face-swap') {
     throw new Error(`Boliden w/ token should use two-pass, got ${bolidenTwoPass?.name}`);
+  }
+
+  const swapOnlyScene = BOLIDEN_SCENE_LIBRARY['coworker-with-machine'];
+  const bolidenSwapOnly = selectStrategy({
+    ...ctxBase,
+    clientMode: 'mobile',
+    company: COMPANY_IDS.BOLIDEN,
+    sceneId: swapOnlyScene.id,
+    scene: swapOnlyScene,
+    pipeline: 'swap-only',
+  });
+  if (bolidenSwapOnly?.name !== faceSwapOnlyStrategy.name) {
+    throw new Error(
+      `pipeline=swap-only should choose ${faceSwapOnlyStrategy.name}, got ${bolidenSwapOnly?.name}`
+    );
   }
 
   const optedOutScene = { ...scene, useFaceSwap: false };

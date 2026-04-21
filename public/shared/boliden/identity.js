@@ -25,6 +25,9 @@ export function buildIdentityLockBlock(personBrief, hasSceneImage = true, option
       `Head size: 10–14% of total frame height. This is larger than a typical background-worker head but still consistent with a documentary shot — the person is in the mid-ground, naturally placed (side third or similar), not forced to the foreground or center. Head-to-body proportion stays anatomical (head ~1/7 of standing body height).`
     );
     lines.push(
+      `Swap targeting hint: make the added worker's face the clearest/most prominent visible face in the frame (slightly closer or slightly more central than other workers), while still reading as a natural documentary scene — not a hero subject or portrait.`
+    );
+    lines.push(
       `Face must be a clean swap target: 3/4 or frontal to camera (not profile), unoccluded — no helmet brim shadowing the eyes, no hand/mug/tool across the face, no hair or headset covering features. Eyes open, mouth neutral.`
     );
     lines.push(
@@ -41,6 +44,9 @@ export function buildIdentityLockBlock(personBrief, hasSceneImage = true, option
     );
     lines.push(
       `Head-to-body proportion and face size: the new person's head must be anatomically proportional to their own torso (head ~1/7 to 1/8 of standing body height) and match the apparent head size of the other workers in ${sceneRef}. The head occupies 10–14% of the total frame height — large enough for clear facial detail but still a documentary composition. Do NOT center the person, do NOT force them into the foreground, do NOT make them the "primary subject" or the largest/closest figure. Place them naturally in the scene alongside existing workers — side third of the frame, mid-ground, one of the crew. No portrait crop, no close-up.`
+    );
+    lines.push(
+      `Swap targeting hint: among all visible faces, the added worker's face is the clearest/most prominent (slightly closer or slightly more central than other workers), while the overall composition remains a natural documentary shot — not a hero subject or portrait.`
     );
     lines.push(
       `Face orientation and occlusion: the placeholder face is 3/4 or frontal to camera so a later face-swap has a clean target. No helmet brim shadowing across the eyes, no hand or mug or tool covering any part of the face, no hair or headset obscuring features. Eyes open, mouth neutral, no extreme expressions.`

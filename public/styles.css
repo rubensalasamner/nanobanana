@@ -53,6 +53,14 @@
   --card: #121821;
   --accent: #4285f4;
 }
+
+body[data-company='boliden'] {
+  --bg: #182032; /* dark blue */
+  --fg: #e4eaef; /* pale blue */
+  --muted: rgba(228, 234, 239, 0.72);
+  --card: #384967; /* blue */
+  --accent: #81a4c8; /* light blue */
+}
 * {
   box-sizing: border-box;
 }
@@ -72,6 +80,14 @@ body {
     Ubuntu;
   background: var(--bg);
   color: var(--fg);
+}
+
+body[data-company='boliden'] #step-welcome,
+body[data-company='boliden'] #step-camera,
+body[data-company='boliden'] #step-style,
+body[data-company='boliden'] #step-result,
+body[data-company='boliden'] #step-share {
+  background: var(--bg);
 }
 
 .deploy-banner {
@@ -197,6 +213,15 @@ body {
   font-weight: 400;
 }
 
+body[data-company='boliden'] .camera-title,
+body[data-company='boliden'] .style-title,
+body[data-company='boliden'] .result-title,
+body[data-company='boliden'] .share-title,
+body[data-company='boliden'] .welcome-text,
+body[data-company='boliden'] .printing-text {
+  color: var(--fg);
+}
+
 .camera-wrap {
   width: 100%;
   display: flex;
@@ -263,6 +288,12 @@ body[data-output-aspect='3:4'] .result-stage {
   box-shadow: 0 10px 20px rgba(55, 125, 255, 0.3);
   cursor: pointer;
   transition: transform 0.1s;
+}
+
+body[data-company='boliden'] .style-card {
+  background: var(--accent);
+  color: var(--fg);
+  box-shadow: 0 10px 20px rgba(129, 164, 200, 0.28);
 }
 
 .style-card:active:not(:disabled) {
@@ -443,6 +474,10 @@ body[data-output-aspect='3:4'] .result-stage {
   animation: bounce 1s infinite;
 }
 
+body[data-company='boliden'] .printing-arrow {
+  color: var(--accent);
+}
+
 @keyframes bounce {
   0%,
   100% {
@@ -476,6 +511,20 @@ body[data-output-aspect='3:4'] .result-stage {
   box-shadow: none;
 }
 
+body[data-company='boliden'] .pill-btn,
+body[data-company='boliden'] button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--fg);
+  box-shadow: 0 8px 16px rgba(129, 164, 200, 0.28);
+}
+
+body[data-company='boliden'] .pill-btn.outline {
+  background: transparent;
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
 .pill-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
@@ -497,6 +546,10 @@ body[data-output-aspect='3:4'] .result-stage {
   padding: 0;
   box-shadow: none;
   background: none;
+}
+
+body[data-company='boliden'] .step-footer {
+  color: var(--muted);
 }
 
 .step-footer img {
@@ -528,6 +581,10 @@ body[data-output-aspect='3:4'] .result-stage {
   flex-direction: column;
   align-items: center;
   padding: 0 16px 24px;
+}
+
+body[data-company='boliden'] .camera-card {
+  background: transparent;
 }
 .bar {
   display: flex;
@@ -565,6 +622,12 @@ button.primary {
   border-color: #4285f4;
   color: #fff;
 }
+
+body[data-company='boliden'] button {
+  border-color: rgba(228, 234, 239, 0.22);
+  background: rgba(56, 73, 103, 0.35);
+  color: var(--fg);
+}
 button.ghost {
   background: transparent;
 }
@@ -587,6 +650,11 @@ button.ghost {
   border-radius: 36px;
   border-color: #d0d7e2;
   color: #1a1a1a;
+}
+
+body[data-company='boliden'] .camera-actions #btnRetake {
+  border-color: rgba(228, 234, 239, 0.28);
+  color: var(--fg);
 }
 .chip {
   background: #0d1420;
@@ -775,6 +843,10 @@ img {
   max-width: 500px;
 }
 
+body[data-company='boliden'] .share-instruction {
+  color: var(--muted);
+}
+
 .share-actions {
   display: flex;
   flex-wrap: wrap;
@@ -826,6 +898,12 @@ img {
   text-decoration: none;
   font-size: 18px;
   font-weight: 500;
+}
+
+body[data-company='boliden'] .social-share-btn {
+  border-color: rgba(228, 234, 239, 0.22);
+  background: rgba(56, 73, 103, 0.35);
+  color: var(--fg);
 }
 
 .social-share-btn:active {
@@ -906,6 +984,10 @@ body[data-mode='mobile'] .share-social-grid {
   margin: 0;
   text-align: center;
   line-height: 1.5;
+}
+
+body[data-company='boliden'] .welcome-title {
+  color: var(--accent);
 }
 
 .banana-emoji {

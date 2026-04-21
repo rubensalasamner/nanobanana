@@ -9,11 +9,17 @@
 // Gemini strategy. Non-Boliden requests always use the default strategy.
 
 import { defaultStrategy } from './default.js';
+import { faceSwapOnlyStrategy } from './face-swap-only.js';
 import { singlePassGeminiStrategy } from './single-pass-gemini.js';
 import { twoPassFaceSwapStrategy } from './two-pass-face-swap.js';
 
 /** @type {import('./types.js').GenerationStrategy[]} */
-export const STRATEGIES = [twoPassFaceSwapStrategy, singlePassGeminiStrategy, defaultStrategy];
+export const STRATEGIES = [
+  faceSwapOnlyStrategy,
+  twoPassFaceSwapStrategy,
+  singlePassGeminiStrategy,
+  defaultStrategy,
+];
 
 /**
  * Pick the first strategy that can handle the given context. Returns null if
@@ -65,4 +71,9 @@ export async function runStrategyWithFallback(ctx) {
   return null;
 }
 
-export { defaultStrategy, singlePassGeminiStrategy, twoPassFaceSwapStrategy };
+export {
+  defaultStrategy,
+  faceSwapOnlyStrategy,
+  singlePassGeminiStrategy,
+  twoPassFaceSwapStrategy,
+};

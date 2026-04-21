@@ -289,6 +289,8 @@ const modeStrategy = MODE_STRATEGIES[appMode];
 idleTimeoutMs = modeStrategy.idleTimeoutMs;
 const useNativeMobileCapture = shouldUseNativeMobileCapture();
 let selectedSceneId = null;
+let selectedPipeline = null;
+let selectedCardKey = null;
 
 function shouldShowDeployBanner() {
   return appMode === APP_MODES.MOBILE && companyId === COMPANY_IDS.BOLIDEN;
@@ -340,6 +342,14 @@ function renderBolidenSceneGrid() {
     // Server builds the Boliden prompt to avoid prompt/image-order drift.
     card.dataset.prompt = 'boliden';
     card.dataset.sceneId = scene.id;
+    card.dataset.cardKey = `scene:${scene.id}`;
+    if (
+      appMode === APP_MODES.MOBILE &&
+      typeof scene.mobilePipeline === 'string' &&
+      scene.mobilePipeline
+    ) {
+      card.dataset.pipeline = scene.mobilePipeline;
+    }
 
     grid.appendChild(card);
 
@@ -791,6 +801,7 @@ function restartFlow() {
   selectedPrompt = null;
   selectedSceneId = null;
   selectedPresetId = null;
+  selectedPipeline = null;
   latestShare = null;
   grid?.querySelectorAll('[data-prompt]').forEach((el) => (el.style.outline = ''));
   retake();
@@ -824,6 +835,8 @@ function handlePresetTap(e) {
   selectedPrompt = btn.dataset.prompt;
   selectedSceneId = btn.dataset.sceneId || null;
   selectedPresetId = btn.dataset.presetId || null;
+  selectedPipeline = btn.dataset.pipeline || null;
+  selectedCardKey = btn.dataset.cardKey || null;
   btnApply.disabled = !latestBlob;
   apiStatus.textContent = 'Selected: ' + (btn.textContent.trim() || 'preset');
 
@@ -851,6 +864,9 @@ function createEditAndShareFormData(imageBlob, prompt, sceneId) {
   form.append('company', companyId);
   form.append('aspect', outputAspectId);
   if (sceneId) form.append('sceneId', sceneId);
+  if (appMode === APP_MODES.MOBILE && selectedPipeline) {
+    form.append('pipeline', selectedPipeline);
+  }
   return form;
 }
 
@@ -879,13 +895,13 @@ function setApplyButtonLoading(isLoading) {
   applySpinner.classList.toggle('hidden', !isLoading);
 }
 
-function getSelectedStyleCard(prompt) {
-  if (!grid || !prompt) return null;
-  return grid.querySelector(`[data-prompt="${CSS.escape(prompt)}"]`);
+function getSelectedStyleCard(cardKey) {
+  if (!grid || !cardKey) return null;
+  return grid.querySelector(`[data-card-key="${CSS.escape(cardKey)}"]`);
 }
 
-function setStyleCardLoading(prompt, isLoading) {
-  const card = getSelectedStyleCard(prompt);
+function setStyleCardLoading(cardKey, isLoading) {
+  const card = getSelectedStyleCard(cardKey);
   if (!card) return;
   if (!card.dataset.originalText) {
     card.dataset.originalText = card.textContent.trim();
@@ -896,7 +912,7 @@ function setStyleCardLoading(prompt, isLoading) {
 
 function restoreStyleCards() {
   if (!grid) return;
-  for (const card of grid.querySelectorAll('[data-prompt]')) {
+  for (const card of grid.querySelectorAll('[data-card-key]')) {
     if (card.dataset.originalText) {
       card.innerHTML = card.dataset.originalText;
     }
@@ -1082,7 +1098,7 @@ function handleApplyError(err, promptAtStart) {
     selectedPrompt = null;
     selectedSceneId = null;
     if (promptAtStart) {
-      setStyleCardLoading(promptAtStart, false);
+      setStyleCardLoading(selectedCardKey, false);
     }
     setStyleTitleGenerating(false);
     setApplyButtonLoading(false);
@@ -1093,7 +1109,7 @@ function handleApplyError(err, promptAtStart) {
   apiStatus.textContent = 'Failed: ' + err.message + ' (check server logs)';
   setStyleTitleGenerating(false);
   if (selectedPrompt) {
-    setStyleCardLoading(selectedPrompt, false);
+    setStyleCardLoading(selectedCardKey, false);
   }
   return false;
 }
@@ -1107,15 +1123,16 @@ async function applyPreset() {
   if (isApplying) return;
   isApplying = true;
   const promptAtStart = selectedPrompt;
+  const cardKeyAtStart = selectedCardKey;
 
   setStyleTitleGenerating(true);
-  setStyleCardLoading(promptAtStart, true);
+  setStyleCardLoading(cardKeyAtStart, true);
   setApplyButtonLoading(true);
 
   if (selectedPresetId === 'original-photo') {
     apiStatus.textContent = 'Preparing photo…';
     try {
-      setStyleCardLoading(promptAtStart, false);
+      setStyleCardLoading(cardKeyAtStart, false);
       renderNoOpPhotoResult(latestBlob);
     } finally {
       setApplyButtonLoading(false);
@@ -1131,7 +1148,7 @@ async function applyPreset() {
   apiStatus.textContent = 'Applying preset…';
   try {
     const out = await callImageEditAndShareAPI(latestBlob, promptAtStart, selectedSceneId);
-    setStyleCardLoading(promptAtStart, false);
+    setStyleCardLoading(cardKeyAtStart, false);
     renderApplySuccess(out);
   } catch (err) {
     console.log(
