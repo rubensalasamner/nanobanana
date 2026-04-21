@@ -229,6 +229,34 @@
         margin: 0;
         font-size: 12px;
       }
+
+      /* On narrow screens the fixed footer overlaps the action buttons,
+         so flow it after the content instead. */
+      @media (max-width: 768px) {
+        body {
+          justify-content: flex-start;
+          padding: 24px 16px 24px;
+        }
+
+        .step-footer {
+          position: static;
+          left: auto;
+          right: auto;
+          bottom: auto;
+          width: 100%;
+          max-width: 600px;
+          margin: 32px auto 0;
+          flex-direction: row;
+          flex-wrap: wrap;
+          justify-content: center;
+          text-align: center;
+          gap: 12px;
+        }
+
+        .footer-note {
+          flex: 1 1 100%;
+        }
+      }
     </style>
   </head>
   <body>
@@ -246,12 +274,12 @@
       </div>
 
       <div class="share-actions">
-        <button
+        <a
           id="downloadBtn"
-          class="primary"
+          class="button primary"
         >
           Download
-        </button>
+        </a>
         <button
           id="copyLink"
           class="secondary"
@@ -373,31 +401,12 @@
           }
         });
 
-        downloadBtn.addEventListener('click', async () => {
-          downloadBtn.disabled = true;
-          const originalText = downloadBtn.textContent;
-          downloadBtn.textContent = 'Downloading…';
-          try {
-            const resp = await fetch(imageUrl, { mode: 'cors' });
-            if (!resp.ok) throw new Error('Fetch failed');
-            const blob = await resp.blob();
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(blob);
-            link.download = filename;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(link.href);
-            downloadBtn.textContent = 'Saved';
-          } catch (err) {
-            console.error('Download failed', err);
-            downloadBtn.textContent = 'Failed, try again';
-          } finally {
-            downloadBtn.disabled = false;
-            setTimeout(() => (downloadBtn.textContent = originalText), 2000);
-          }
-        });
-
+        // Use the server-side /api/share-download endpoint which sets
+        // Content-Disposition: attachment. This avoids mobile browser issues
+        // with JS-triggered blob downloads (lost user gesture across await,
+        // premature revokeObjectURL, iOS Safari blob-download quirks).
+        downloadBtn.href = `/api/share-download?src=${encodedUrl}`;
+        downloadBtn.setAttribute('download', filename);
       }
     </script>
   </body>
