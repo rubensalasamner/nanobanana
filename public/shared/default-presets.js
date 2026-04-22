@@ -20,6 +20,12 @@ export const DEFAULT_STYLE_PRESETS = Object.freeze([
       "Use the uploaded webcam photo as the only reference image. Generate a 1980s yearbook portrait of this person. Preserve the exact face and identity. You may change background, hairstyle, facial hair, glasses, outfit, and lighting to fit 1980s ‘glamour shots’ aesthetics (big hair, mullets, large glasses, soft/foggy lighting, fun backdrops). No added text or watermarks. Single subject only.",
   },
   {
+    id: 'polaroid',
+    label: 'Polaroid',
+    prompt:
+      'Generate a 4K ultra-realistic motion blurred instant camera image featuring the people from the reference images, posed together. Preserve their facial features, add a gentle blur, and keep the lighting uniform against a soft white curtain backdrop for a warm, candid film-style effect. Do not change their faces at all.',
+  },
+  {
     id: 'photo-to-painting',
     label: 'Photo to painting',
     prompt:
@@ -74,7 +80,9 @@ export const DEFAULT_STYLE_PRESETS = Object.freeze([
  * @type {readonly string[]}
  */
 export const BOOTH_CLIENT_PRESET_IDS = Object.freeze([
+  'figurine',
   'yearbook-80s',
+  'polaroid',
   'photo-to-painting',
   'fashion-60s',
   'hairstyle',
