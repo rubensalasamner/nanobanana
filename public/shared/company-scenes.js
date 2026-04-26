@@ -7,6 +7,7 @@ const BOLIDEN_SCENE_DATA = [
   {
     id: 'underground-drill',
     label: 'Underground drilling',
+    hidden: true,
     imagePath: 'assets/images/boliden/prompt-backgrounds/drilling-at-zinkgruvan.jpeg',
     nativeAspect: '16:9',
     ppeHint: 'Hard hat with mounted lamp, reflective yellow safety jacket, work gloves.',
