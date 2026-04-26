@@ -42,6 +42,7 @@ const BOLIDEN_SCENE_DATA = [
   {
     id: 'coworker-with-machine',
     label: 'Coworker with machine',
+    hidden: true,
     imagePath: 'assets/images/boliden/prompt-backgrounds/coworker-with-machine.jpeg',
     nativeAspect: '16:9',
     replaceReferenceSubject: true,
@@ -59,6 +60,7 @@ const BOLIDEN_SCENE_DATA = [
   {
     id: 'coworker-with-measuring-instrument',
     label: 'Coworker with measuring instrument',
+    hidden: true,
     imagePath:
       'assets/images/boliden/prompt-backgrounds/coworker-with-measuring-instrument.jpeg',
     nativeAspect: '16:9',

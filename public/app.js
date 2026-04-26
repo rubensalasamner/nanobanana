@@ -219,6 +219,8 @@ let latestLocalResultUrl = null;
 let isApplying = false;
 let styleStepTimeout = null;
 let nativeCapturePending = false;
+let selfieProcessing = false;
+let pendingSelfieCardKey = null;
 const APP_MODES = Object.freeze({
   BOOTH: 'booth',
   MOBILE: 'mobile',
@@ -560,6 +562,7 @@ function renderBolidenSceneGrid() {
   if (!grid) return;
   grid.innerHTML = '';
   for (const scene of BOLIDEN_SCENES) {
+    if (scene.hidden) continue;
     const card = document.createElement('button');
     card.className = 'style-card';
     card.textContent = scene.label;
@@ -613,9 +616,9 @@ setInterval(() => fetch('/api/cleanup').catch(() => {}), 60 * 60 * 1000);
  * @param {number} targetH - Target height
  * @returns {string} - Base64 data URL
  */
-function cropToAspectRatio(image, targetW, targetH) {
-  const inputW = image.videoWidth || image.width;
-  const inputH = image.videoHeight || image.height;
+function cropToCanvas(image, targetW, targetH) {
+  const inputW = image.videoWidth || image.naturalWidth || image.width;
+  const inputH = image.videoHeight || image.naturalHeight || image.height;
   const targetRatio = targetW / targetH;
   const inputRatio = inputW / inputH;
 
@@ -641,7 +644,63 @@ function cropToAspectRatio(image, targetW, targetH) {
   const ctx = canvas.getContext('2d');
   ctx.drawImage(image, sx, sy, sw, sh, 0, 0, targetW, targetH);
 
-  return canvas.toDataURL('image/jpeg', 0.9);
+  return canvas;
+}
+
+function getUploadDimensions() {
+  const MAX = 1600;
+  const longEdge = Math.max(outputAspectPreset.uploadWidth, outputAspectPreset.uploadHeight);
+  const scale = Math.min(1, MAX / longEdge);
+  return {
+    w: Math.round(outputAspectPreset.uploadWidth * scale),
+    h: Math.round(outputAspectPreset.uploadHeight * scale),
+  };
+}
+
+// Crop+scale source straight to upload dimensions and encode once. Avoids the
+// data-URL round trip that doubled processing time on mid-range phones.
+async function processSelfieFromSource(source) {
+  const { w, h } = getUploadDimensions();
+  const canvas = cropToCanvas(source, w, h);
+  if (stylePreview) {
+    stylePreview.src = canvas.toDataURL('image/jpeg', 0.85);
+  }
+  latestBlob = await toBlobAsync(canvas, 'image/jpeg', 0.85);
+  void saveReuseSelfieBlob(latestBlob);
+}
+
+function showSelfieProcessingMessage() {
+  if (!styleLoadingLine) return;
+  ensureStyleLoadingMarkup();
+  styleLoadingLine.classList.remove('hidden');
+  const textSpan = styleLoadingLine.querySelector('.style-loading-text');
+  if (textSpan) textSpan.textContent = 'Preparing your photo';
+  resetDots();
+  startDotsAnimation();
+}
+
+function hideSelfieProcessingMessage() {
+  if (styleDotsTimer) {
+    clearInterval(styleDotsTimer);
+    styleDotsTimer = null;
+  }
+  if (styleLoadingLine && !styleLoadingTimer) {
+    styleLoadingLine.classList.add('hidden');
+  }
+}
+
+// Apply a selection that the user tapped while the selfie was still encoding.
+function flushPendingSelfieSelection() {
+  if (!pendingSelfieCardKey || !latestBlob || !selectedPrompt) {
+    pendingSelfieCardKey = null;
+    return;
+  }
+  if (currentStep !== 'style' || isApplying) {
+    pendingSelfieCardKey = null;
+    return;
+  }
+  pendingSelfieCardKey = null;
+  applyPreset();
 }
 
 function onTap(el, handler) {
@@ -810,57 +869,37 @@ async function handleNativeCaptureChange(event) {
     return;
   }
 
+  const objectUrl = URL.createObjectURL(file);
+  photo.src = objectUrl;
+  photo.classList.remove('hidden');
+  video.classList.add('hidden');
+  canvas.classList.add('hidden');
+
+  // Show the prompt grid immediately; processing continues in the background.
+  latestBlob = null;
+  selfieProcessing = true;
+  showSelfieProcessingMessage();
+  showStep('style');
+
   try {
-    const objectUrl = URL.createObjectURL(file);
     const sourceImg = await new Promise((resolve, reject) => {
       const img = new Image();
       img.onload = () => resolve(img);
       img.onerror = reject;
       img.src = objectUrl;
     });
-
-    photo.src = objectUrl;
-    photo.classList.remove('hidden');
-    video.classList.add('hidden');
-    canvas.classList.add('hidden');
-
-    const croppedDataUrl = cropToAspectRatio(
-      sourceImg,
-      outputAspectPreset.uploadWidth,
-      outputAspectPreset.uploadHeight
-    );
-    if (stylePreview) {
-      stylePreview.src = croppedDataUrl;
-    }
-
-    const MAX = 1600;
-    const longEdge = Math.max(outputAspectPreset.uploadWidth, outputAspectPreset.uploadHeight);
-    const scale = Math.min(1, MAX / longEdge);
-    const upW = Math.round(outputAspectPreset.uploadWidth * scale);
-    const upH = Math.round(outputAspectPreset.uploadHeight * scale);
-    const croppedImg = await new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = reject;
-      img.src = croppedDataUrl;
-    });
-    const tmp = document.createElement('canvas');
-    tmp.width = upW;
-    tmp.height = upH;
-    const tmpCtx = tmp.getContext('2d');
-    tmpCtx.drawImage(croppedImg, 0, 0, upW, upH);
-    latestBlob = await toBlobAsync(tmp, 'image/jpeg', 0.85);
-    void saveReuseSelfieBlob(latestBlob);
-
-    btnApply.disabled = !selectedPrompt;
+    await processSelfieFromSource(sourceImg);
     camStatus.textContent = 'Snapshot captured.';
-    showStep('style');
   } catch (err) {
     camStatus.textContent = 'Could not process captured image.';
     console.error('Native capture processing failed:', err);
   } finally {
+    selfieProcessing = false;
+    hideSelfieProcessingMessage();
     isTakingSnapshot = false;
     if (nativeCaptureInput) nativeCaptureInput.value = '';
+    btnApply.disabled = !selectedPrompt || !latestBlob;
+    flushPendingSelfieSelection();
   }
 }
 
@@ -938,58 +977,42 @@ async function takeSnapshot() {
   canvas.classList.add('hidden');
   photo.classList.remove('hidden');
 
-  // Letterbox to 3:4 portrait for API in the background
-  const croppedDataUrl = cropToAspectRatio(
-    video,
-    outputAspectPreset.uploadWidth,
-    outputAspectPreset.uploadHeight
-  );
+  // Mobile jumps to the prompt grid right away; the heavy crop+encode runs in
+  // the background with a "Preparing your photo" indicator. Booth keeps its
+  // 2s preview because the retake button needs to remain reachable.
+  latestBlob = null;
+  if (appMode === APP_MODES.MOBILE) {
+    selfieProcessing = true;
+    showSelfieProcessingMessage();
+    showStep('style');
+  } else {
+    btnRetake.classList.remove('hidden');
+    camStatus.textContent = 'Snapshot captured.';
+  }
 
-  const MAX = 1600; // long edge
-  const longEdge = Math.max(outputAspectPreset.uploadWidth, outputAspectPreset.uploadHeight);
-  const scale = Math.min(1, MAX / longEdge);
-  const upW = Math.round(outputAspectPreset.uploadWidth * scale);
-  const upH = Math.round(outputAspectPreset.uploadHeight * scale);
-
-  let snapshotBlob = null;
   try {
-    const croppedImg = await new Promise((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = reject;
-      img.src = croppedDataUrl;
-    });
-    const tmp = document.createElement('canvas');
-    tmp.width = upW;
-    tmp.height = upH;
-    const tmpCtx = tmp.getContext('2d');
-    tmpCtx.drawImage(croppedImg, 0, 0, upW, upH);
-    snapshotBlob = await toBlobAsync(tmp, 'image/jpeg', 0.85);
-    latestBlob = snapshotBlob;
-    void saveReuseSelfieBlob(snapshotBlob);
+    await processSelfieFromSource(video);
+    if (appMode !== APP_MODES.MOBILE) {
+      camStatus.textContent = 'Snapshot captured.';
+    }
   } catch (err) {
     console.error('Snapshot crop failed:', err);
     camStatus.textContent = 'Could not process snapshot.';
-  }
-
-  // Store cropped image for style step preview (but don't show it)
-  if (stylePreview) {
-    stylePreview.src = croppedDataUrl;
-  }
-  if (snapshotBlob) {
-    btnApply.disabled = !selectedPrompt;
-    camStatus.textContent = 'Snapshot captured.';
-
+  } finally {
     if (appMode === APP_MODES.MOBILE) {
-      showStep('style');
-    } else {
-      btnRetake.classList.remove('hidden');
-      if (styleStepTimeout) clearTimeout(styleStepTimeout);
-      styleStepTimeout = setTimeout(() => {
-        styleStepTimeout = null;
-        showStep('style');
-      }, 2000);
+      selfieProcessing = false;
+      hideSelfieProcessingMessage();
     }
+    btnApply.disabled = !selectedPrompt || !latestBlob;
+    flushPendingSelfieSelection();
+  }
+
+  if (appMode !== APP_MODES.MOBILE && latestBlob) {
+    if (styleStepTimeout) clearTimeout(styleStepTimeout);
+    styleStepTimeout = setTimeout(() => {
+      styleStepTimeout = null;
+      showStep('style');
+    }, 2000);
   }
 
   isTakingSnapshot = false;
@@ -1009,6 +1032,9 @@ function retake() {
   latestBlob = null;
   latestShare = null;
   selectedSceneId = null;
+  selfieProcessing = false;
+  pendingSelfieCardKey = null;
+  hideSelfieProcessingMessage();
   if (btnContinue) btnContinue.classList.add('hidden');
   // Hide style preview when retaking
   if (stylePreview) {
@@ -1068,9 +1094,16 @@ function handlePresetTap(e) {
   selectedSceneId = btn.dataset.sceneId || null;
   selectedPresetId = btn.dataset.presetId || null;
   selectedCardKey = btn.dataset.cardKey || null;
-  btnApply.disabled = !latestBlob;
   apiStatus.textContent = 'Selected: ' + (btn.textContent.trim() || 'preset');
 
+  // Selfie still encoding — queue the selection and apply once it's ready.
+  if (selfieProcessing) {
+    pendingSelfieCardKey = selectedCardKey;
+    btnApply.disabled = true;
+    return;
+  }
+
+  btnApply.disabled = !latestBlob;
   if (latestBlob && !isApplying) {
     applyPreset();
   } else if (!latestBlob) {
