@@ -852,11 +852,9 @@ async function handleNativeCaptureChange(event) {
     latestBlob = await toBlobAsync(tmp, 'image/jpeg', 0.85);
     void saveReuseSelfieBlob(latestBlob);
 
-    if (btnSnap) btnSnap.classList.add('hidden');
-    btnRetake.classList.remove('hidden');
-    if (btnContinue) btnContinue.classList.remove('hidden');
     btnApply.disabled = !selectedPrompt;
     camStatus.textContent = 'Snapshot captured.';
+    showStep('style');
   } catch (err) {
     camStatus.textContent = 'Could not process captured image.';
     console.error('Native capture processing failed:', err);
@@ -979,17 +977,13 @@ async function takeSnapshot() {
     stylePreview.src = croppedDataUrl;
   }
   if (snapshotBlob) {
-    if (appMode === APP_MODES.MOBILE) {
-      if (btnSnap) btnSnap.classList.add('hidden');
-      btnRetake.classList.remove('hidden');
-      if (btnContinue) btnContinue.classList.remove('hidden');
-    } else {
-      btnRetake.classList.remove('hidden');
-    }
     btnApply.disabled = !selectedPrompt;
     camStatus.textContent = 'Snapshot captured.';
 
-    if (appMode !== APP_MODES.MOBILE) {
+    if (appMode === APP_MODES.MOBILE) {
+      showStep('style');
+    } else {
+      btnRetake.classList.remove('hidden');
       if (styleStepTimeout) clearTimeout(styleStepTimeout);
       styleStepTimeout = setTimeout(() => {
         styleStepTimeout = null;
