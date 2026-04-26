@@ -5,8 +5,13 @@
 import sharp from 'sharp';
 
 import { BOLIDEN_SCENE_LIBRARY, COMPANY_IDS } from '../public/shared/company-scenes.js';
-import { buildInsertPrompt, parseDescribeResponse } from '../public/shared/boliden/index.js';
+import {
+  buildInsertPrompt,
+  parseDescribeResponse,
+  parseHairLength,
+} from '../public/shared/boliden/index.js';
 import { defaultStrategy, faceSwapOnlyStrategy, selectStrategy, STRATEGIES } from '../api/strategies/index.js';
+import { isHairCompatible } from '../api/strategies/face-swap-only.js';
 import { NO_FACE_FOUND_MESSAGE } from '../api/strategies/types.js';
 import { getOutputAspectPreset } from '../public/shared/output-aspect.js';
 import {
@@ -213,26 +218,41 @@ function checkSelector() {
   }
 
   // Metadata-driven swap-only selection: scene declares
-  // primaryFace.strategy='swap-only' and runs in mobile mode.
-  for (const swapOnlyId of ['coworker-with-machine', 'coworker-with-measuring-instrument']) {
-    const swapOnlyScene = BOLIDEN_SCENE_LIBRARY[swapOnlyId];
-    if (swapOnlyScene?.primaryFace?.strategy !== 'swap-only') {
-      throw new Error(
-        `${swapOnlyId} must declare primaryFace.strategy='swap-only' to drive face-swap-only selection`
-      );
-    }
-    const bolidenSwapOnly = selectStrategy({
-      ...ctxBase,
-      clientMode: 'mobile',
-      company: COMPANY_IDS.BOLIDEN,
-      sceneId: swapOnlyScene.id,
-      scene: swapOnlyScene,
-    });
-    if (bolidenSwapOnly?.name !== faceSwapOnlyStrategy.name) {
-      throw new Error(
-        `mobile + primaryFace=swap-only should choose ${faceSwapOnlyStrategy.name} for ${swapOnlyId}, got ${bolidenSwapOnly?.name}`
-      );
-    }
+  // primaryFace.strategy='swap-only' and runs in mobile mode. The smoke
+  // fixture's personBrief is `Hair: short brown, straight` -> 'short', so
+  // we only verify a hair-matched scene picks swap-only here. Hair-mismatch
+  // fall-through is asserted in checkHairLengthGate.
+  const shortHairSwapOnlyScene = BOLIDEN_SCENE_LIBRARY['coworker-with-machine'];
+  if (shortHairSwapOnlyScene?.primaryFace?.strategy !== 'swap-only') {
+    throw new Error(
+      `coworker-with-machine must declare primaryFace.strategy='swap-only' to drive face-swap-only selection`
+    );
+  }
+  if (shortHairSwapOnlyScene?.primaryFace?.hair?.length !== 'short') {
+    throw new Error(
+      `coworker-with-machine must declare primaryFace.hair.length='short' (the worker has short hair)`
+    );
+  }
+  const bolidenSwapOnly = selectStrategy({
+    ...ctxBase,
+    clientMode: 'mobile',
+    company: COMPANY_IDS.BOLIDEN,
+    sceneId: shortHairSwapOnlyScene.id,
+    scene: shortHairSwapOnlyScene,
+  });
+  if (bolidenSwapOnly?.name !== faceSwapOnlyStrategy.name) {
+    throw new Error(
+      `mobile + primaryFace=swap-only + hair-match should choose ${faceSwapOnlyStrategy.name} for coworker-with-machine, got ${bolidenSwapOnly?.name}`
+    );
+  }
+
+  // Verify the long-hair scene is also declared correctly. The hair-match
+  // case for it lives in checkHairLengthGate where we can drive the brief.
+  const longHairSwapOnlyScene = BOLIDEN_SCENE_LIBRARY['coworker-with-measuring-instrument'];
+  if (longHairSwapOnlyScene?.primaryFace?.hair?.length !== 'long') {
+    throw new Error(
+      `coworker-with-measuring-instrument must declare primaryFace.hair.length='long' (the worker has long hair)`
+    );
   }
 
   // Booth mode is intentionally restricted away from face-swap-only even on a
@@ -781,6 +801,136 @@ function checkForegroundHero() {
   console.log(JSON.stringify({ foregroundHeroChecks: 'ok' }));
 }
 
+function checkParseHairLength() {
+  const cases = [
+    // [brief, expected]
+    [null, null],
+    [undefined, null],
+    ['', null],
+    ['no Hair line at all', null],
+    ['Hair: short brown, straight', 'short'],
+    ['Hair: buzz cut, dark', 'short'],
+    ['Hair: crew cut', 'short'],
+    ['Hair: cropped, salt-and-pepper', 'short'],
+    ['Hair: pixie cut, blonde', 'short'],
+    ['Hair: long blonde, wavy', 'long'],
+    ['Hair: past-shoulders, brown', 'long'],
+    ['Hair: waist-length black, straight', 'long'],
+    ['Hair: medium brown, curly', 'medium'],
+    ['Hair: shoulder-length brown', 'medium'],
+    ['Hair: chin-length bob, dark', 'medium'],
+    ['Hair: bob, brown', 'medium'],
+    // Bald / hairless: no length signal — must return null so the gate
+    // doesn't block on it.
+    ['Hair: bald, none', null],
+    ['Hair: shaved head', null],
+    // A brief that uses an adjective we don't bucket must return null,
+    // not guess. Conservative parser.
+    ['Hair: messy, brown', null],
+    // Case-insensitive and tolerant of leading whitespace.
+    ['  hair: SHORT BROWN', 'short'],
+    // Multi-line briefs: must find the Hair: line wherever it is.
+    [
+      ['Eyes: brown', 'Hair: long blonde', 'Mouth: medium'].join('\n'),
+      'long',
+    ],
+  ];
+
+  for (const [brief, expected] of cases) {
+    const got = parseHairLength(brief);
+    if (got !== expected) {
+      throw new Error(
+        `parseHairLength(${JSON.stringify(brief)}) = ${JSON.stringify(got)}, expected ${JSON.stringify(expected)}`
+      );
+    }
+  }
+
+  console.log(JSON.stringify({ parseHairLengthChecks: 'ok' }));
+}
+
+function checkHairCompatibility() {
+  const cases = [
+    // [selfieLength, sceneLength, expectedCompatible]
+    ['short', 'short', true],
+    ['long', 'long', true],
+    ['medium', 'medium', true],
+    // Medium is compatible with anything — strategy stays in swap-only.
+    ['medium', 'short', true],
+    ['medium', 'long', true],
+    ['short', 'medium', true],
+    ['long', 'medium', true],
+    // The two cases that block — the whole point of the gate.
+    ['short', 'long', false],
+    ['long', 'short', false],
+    // Unknown on either side never blocks (conservative — only positive
+    // evidence of a clash triggers fallback).
+    [null, 'long', true],
+    ['short', null, true],
+    [null, null, true],
+    [undefined, 'short', true],
+  ];
+
+  for (const [selfie, scene, expected] of cases) {
+    const got = isHairCompatible(selfie, scene);
+    if (got !== expected) {
+      throw new Error(
+        `isHairCompatible(${JSON.stringify(selfie)}, ${JSON.stringify(scene)}) = ${got}, expected ${expected}`
+      );
+    }
+  }
+
+  console.log(JSON.stringify({ hairCompatibilityChecks: 'ok' }));
+}
+
+function checkHairLengthGate() {
+  // Drive selectStrategy with crafted personBrief and verify the swap-only
+  // gate behaves correctly. We need REPLICATE_API_TOKEN set so that
+  // two-pass-face-swap is also eligible (otherwise fallback would land on
+  // single-pass-gemini, which is correct but doesn't prove "fell through
+  // because of hair").
+  const savedToken = process.env.REPLICATE_API_TOKEN;
+  process.env.REPLICATE_API_TOKEN = 'fake-for-smoke';
+
+  const longHairScene = BOLIDEN_SCENE_LIBRARY['coworker-with-measuring-instrument'];
+  const shortHairScene = BOLIDEN_SCENE_LIBRARY['coworker-with-machine'];
+
+  const matrix = [
+    // [scene, selfieBrief, expectedStrategy, label]
+    [longHairScene, 'Hair: long blonde, wavy', 'face-swap-only', 'long+long'],
+    [longHairScene, 'Hair: short brown, straight', 'two-pass-face-swap', 'long-scene+short-selfie -> fallback'],
+    [longHairScene, 'Hair: medium brown, wavy', 'face-swap-only', 'long-scene+medium-selfie -> stays'],
+    [shortHairScene, 'Hair: short brown, straight', 'face-swap-only', 'short+short'],
+    [shortHairScene, 'Hair: long blonde, wavy', 'two-pass-face-swap', 'short-scene+long-selfie -> fallback'],
+    [shortHairScene, 'Hair: medium brown, wavy', 'face-swap-only', 'short-scene+medium-selfie -> stays'],
+    // No Hair: line — gate must not block, swap-only still wins.
+    [longHairScene, 'Eyes: brown\nMouth: medium', 'face-swap-only', 'unknown-selfie-hair -> stays'],
+    // Bald is treated as unknown length (no signal), so it should not block.
+    [longHairScene, 'Hair: bald', 'face-swap-only', 'bald-selfie -> stays'],
+  ];
+
+  for (const [scene, brief, expected, label] of matrix) {
+    const chosen = selectStrategy({
+      ...ctxBase,
+      clientMode: 'mobile',
+      company: COMPANY_IDS.BOLIDEN,
+      sceneId: scene.id,
+      scene,
+      personBrief: brief,
+    });
+    if (chosen?.name !== expected) {
+      throw new Error(
+        `hair gate [${label}] expected ${expected}, got ${chosen?.name} ` +
+          `(scene=${scene.id}, brief=${JSON.stringify(brief)})`
+      );
+    }
+  }
+
+  if (savedToken === undefined) delete process.env.REPLICATE_API_TOKEN;
+  else process.env.REPLICATE_API_TOKEN = savedToken;
+
+  console.log(JSON.stringify({ hairLengthGateChecks: 'ok' }));
+}
+
 function checkPlaceholderModeContrast() {
   // The prompt-builder is the actual mechanism by which single-pass-gemini's
   // new `faceWillBeSwapped: true` argument changes Gemini's instructions.
@@ -849,6 +999,9 @@ async function main() {
   await checkNormalizeImage();
   checkFatalReasonExports();
   checkParseDescribeResponse();
+  checkParseHairLength();
+  checkHairCompatibility();
+  checkHairLengthGate();
   checkParseBboxResponse();
   await checkCropComposite();
   checkForegroundHero();

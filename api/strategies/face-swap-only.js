@@ -7,12 +7,48 @@
 // Restricted to mobile clients on purpose: booth flows have different
 // fidelity/time budgets and may want the higher-fidelity two-pass output
 // even for single-person scenes. Lift this constraint per-scene if needed.
+//
+// Hair-length gate
+// ----------------
+// InsightFace (cdingram/face-swap) only swaps the face region — eyes, nose,
+// mouth, skin, inner face shape. It does not touch hair, ears, or hairline.
+// So a long-haired selfie onto a short-haired body keeps the body's short
+// hair, and vice-versa, which reads as the wrong gender presentation.
+//
+// To avoid that failure mode, scenes with a strong hair signal declare it as
+// `primaryFace.hair = { length: 'short'|'long'|'medium' }`. We compare it
+// against the selfie's parsed `Hair:` line at strategy-selection time. A
+// strict short↔long clash makes the strategy decline; the selector falls
+// through to two-pass, where Gemini renders a fresh body whose hair matches
+// the selfie. medium and unknown are compatible with everything — we only
+// block on positive evidence of a mismatch, never on a flaky parse.
 
+import { parseHairLength } from '../../public/shared/boliden/index.js';
 import { COMPANY_IDS } from '../../public/shared/company-scenes.js';
 import { isFaceSwapAvailable } from '../faceSwap.js';
 import { applyFaceSwapAndRestore } from '../postProcessFace.js';
 
 import { NO_FACE_FOUND_MESSAGE } from './types.js';
+
+/**
+ * Returns true if the selfie's hair length is compatible with the scene's
+ * declared hair length. Compatibility rules:
+ *   - identical buckets are compatible (short=short, long=long, medium=medium)
+ *   - 'medium' is compatible with anything (including short and long)
+ *   - 'short' and 'long' are mutually incompatible — the only blocking case
+ *   - any null (unknown selfie hair, scene without hair metadata) is
+ *     compatible: we only fall back on positive evidence of a clash
+ *
+ * @param {string|null|undefined} selfieLength
+ * @param {string|null|undefined} sceneLength
+ * @returns {boolean}
+ */
+export function isHairCompatible(selfieLength, sceneLength) {
+  if (!selfieLength || !sceneLength) return true;
+  if (selfieLength === sceneLength) return true;
+  if (selfieLength === 'medium' || sceneLength === 'medium') return true;
+  return false;
+}
 
 function strategyNameFromOutcome(base, outcome) {
   if (outcome === 'ok') return `${base}+restore`;
@@ -31,7 +67,19 @@ export const faceSwapOnlyStrategy = {
     if (!ctx.scene) return false;
     if (ctx.scene.primaryFace?.strategy !== 'swap-only') return false;
     if (!ctx.sceneImage?.buf) return false;
-    return isFaceSwapAvailable();
+    if (!isFaceSwapAvailable()) return false;
+
+    const sceneHair = ctx.scene.primaryFace.hair?.length ?? null;
+    const selfieHair = parseHairLength(ctx.personBrief);
+    if (!isHairCompatible(selfieHair, sceneHair)) {
+      ctx.log?.(ctx.reqId, 'log', 'strategy.swapOnly.declineHairMismatch', {
+        sceneId: ctx.scene.id,
+        sceneHair,
+        selfieHair,
+      });
+      return false;
+    }
+    return true;
   },
 
   async generate(ctx) {

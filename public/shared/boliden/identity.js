@@ -133,6 +133,68 @@ const IDENTITY_BRIEF_INSTRUCTIONS = [
  */
 
 /**
+ * Extract a coarse hair-length bucket from a person brief. Used by the
+ * face-swap-only strategy gate: the underlying model (InsightFace
+ * cdingram/face-swap) only swaps the FACE region, not hair. So a long-haired
+ * scene + short-haired selfie produces a face-swapped output that still has
+ * the original long hair, which reads as the wrong gender presentation.
+ * The strategy compares the parsed length against the scene's declared
+ * `primaryFace.hair.length` and falls back to two-pass on mismatch so
+ * Gemini can render a body whose hair matches the selfie.
+ *
+ * Returns one of:
+ *   - 'short'   long ≤ ear-ish (short, buzz, crew, undercut, cropped)
+ *   - 'long'    past shoulders (long, waist-length, past-shoulders)
+ *   - 'medium'  in-between (medium, shoulder-length, chin-length, bob)
+ *   - null      no `Hair:` line, unrecognised, or bald (no length signal).
+ *
+ * `medium` is treated as compatible with both buckets at the call site —
+ * this parser only buckets, it does not gate.
+ *
+ * Conservative semantics: a missing or unrecognised brief returns null,
+ * which the gate must NOT treat as a mismatch. We only block when we have
+ * positive evidence of a clash.
+ *
+ * @param {string|null|undefined} brief
+ * @returns {'short'|'long'|'medium'|null}
+ */
+export function parseHairLength(brief) {
+  if (typeof brief !== 'string') return null;
+  const match = brief.match(/^\s*Hair:\s*(.+)$/im);
+  if (!match) return null;
+  const desc = match[1].toLowerCase();
+
+  // Order matters: check longest-first because "shoulder-length" contains
+  // "long" as a substring of nothing relevant, but "past shoulders" implies
+  // long. Bald takes priority over everything (no hair = no length signal).
+  if (/\b(bald|shaved head|hairless)\b/.test(desc)) return null;
+
+  if (
+    /\b(long|past[- ]shoulders?|waist[- ]length|mid[- ]back)\b/.test(desc)
+  ) {
+    return 'long';
+  }
+
+  if (
+    /\b(short|buzz(?:ed)?|crew[- ]cut|crewcut|cropped|pixie|undercut|fade|close[- ]cropped)\b/.test(
+      desc
+    )
+  ) {
+    return 'short';
+  }
+
+  if (
+    /\b(medium|shoulder[- ]length|chin[- ]length|bob|lob|mid[- ]length)\b/.test(
+      desc
+    )
+  ) {
+    return 'medium';
+  }
+
+  return null;
+}
+
+/**
  * Pure parser for the model response. Exposed so the smoke test can cover
  * the four canonical shapes (yes+brief, no, malformed, empty) without
  * needing a real Gemini round-trip.

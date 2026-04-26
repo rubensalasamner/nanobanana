@@ -35,8 +35,18 @@
  * (e.g. `{ strategy: 'targeted-swap', bbox: [...] }` for multi-person scenes
  * with a known target region) without another schema migration.
  *
+ * @typedef {Object} PrimaryFaceHair
+ * @property {'short'|'long'|'medium'} length
+ *   The target person's hair-length bucket. The face-swap-only gate compares
+ *   this against the selfie's parsed `Hair:` line. A strict short↔long clash
+ *   forces fallback to two-pass; medium and unknown are compatible with both
+ *   to avoid blocking on a flaky parse.
+ *
  * @typedef {Object} PrimaryFace
  * @property {'swap-only'} strategy
+ * @property {PrimaryFaceHair} [hair]
+ *   Optional. Required for scenes that should reject hair-mismatched selfies
+ *   from the swap-only path; absent means swap-only runs unconditionally.
  */
 
 /**

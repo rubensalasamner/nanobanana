@@ -7,6 +7,7 @@ export {
   buildIdentityLockBlock,
   describePersonAppearance,
   parseDescribeResponse,
+  parseHairLength,
 } from './identity.js';
 export { buildSceneIntegrationBlock, buildVisualIntegrationBlock } from './scene.js';
 export { buildConstraintsBlock } from './constraints.js';

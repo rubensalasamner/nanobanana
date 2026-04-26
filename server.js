@@ -26,6 +26,7 @@ import {
   resolveFaceRestoreModel,
 } from './api/faceRestore.js';
 import { isFaceDetectEnabled } from './api/faceDetect.js';
+import { BOLIDEN_SCENES } from './public/shared/company-scenes.js';
 
 // Exit early if running on Vercel (should not happen, but safety check)
 if (process.env.VERCEL) {
@@ -141,6 +142,7 @@ app.get('/diag', (_req, res) => {
       model: resolveFaceRestoreModel(),
       fidelity: resolveCodeformerFidelity(),
     },
+    bolidenSceneIds: BOLIDEN_SCENES.map((s) => s.id),
   });
 });
 

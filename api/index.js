@@ -18,6 +18,7 @@ import {
   runEditCore,
   runEditAndSharePipeline,
 } from './requestHandlers.js';
+import { BOLIDEN_SCENES } from '../public/shared/company-scenes.js';
 
 export const config = {
   runtime: 'nodejs',
@@ -111,6 +112,7 @@ async function handleDiag(_req, res) {
     vercelDeploymentId: process.env.VERCEL_DEPLOYMENT_ID || null,
     vercelGitCommitSha: process.env.VERCEL_GIT_COMMIT_SHA || null,
     vercelRegion: process.env.VERCEL_REGION || null,
+    bolidenSceneIds: BOLIDEN_SCENES.map((s) => s.id),
   });
 }
 

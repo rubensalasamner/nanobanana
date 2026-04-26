@@ -1424,8 +1424,9 @@ async function applyPreset() {
 
   apiStatus.textContent = 'Applying preset…';
   try {
+    const sceneIdAtStart = selectedSceneId;
     const t0 = companyId === COMPANY_IDS.BOLIDEN ? performance.now() : null;
-    const out = await callImageEditAndShareAPI(latestBlob, promptAtStart, selectedSceneId);
+    const out = await callImageEditAndShareAPI(latestBlob, promptAtStart, sceneIdAtStart);
     const bolidenGenerateMs =
       companyId === COMPANY_IDS.BOLIDEN && t0 != null ? performance.now() - t0 : null;
     setStyleCardLoading(cardKeyAtStart, false);

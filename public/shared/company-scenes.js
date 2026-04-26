@@ -16,15 +16,17 @@ const BOLIDEN_SCENE_DATA = [
       'Place the new person standing on the left side of the tunnel in the background, against the rock wall behind the existing crouched worker and the drill rig. They observe the work from a short distance, never in front of the existing worker and never obstructing the drill equipment.',
   },
   {
-    id: 'tunnel-shift',
-    label: 'Tunnel shift',
-    imagePath: 'assets/images/boliden/prompt-backgrounds/mining-raw.jpg',
+    id: 'zinkgruvan-tailings-pond',
+    label: 'Zinkgruvan by the tailings pond',
+    imagePath:
+      'assets/images/boliden/prompt-backgrounds/zinkgruvan-by-the-tailings-pond.jpeg',
     nativeAspect: '16:9',
-    ppeHint: 'Helmet, high-visibility outerwear, utility belt, rugged boots.',
+    ppeHint:
+      'Neon hi-vis jacket and navy trousers with silver reflective stripes, hard hat with ear protection, safety glasses, gloves if others wear them — match the crew.',
     promptHint:
-      'The scene is an underground tunnel with industrial lighting. The photograph should look like it was taken in this environment — all skin tones and shadows should match the tunnel lighting.',
+      'Outdoor site at Zinkgruvan beside a tailings pond: sand and gravel foreground, large pipe behind the workers, flat water and grey sky in the distance. Soft overcast daylight — skin tones and shadows must match that flat outdoor light.',
     placementHint:
-      'Place the new person in the mid-ground of the tunnel, off to the left or right side (not centered in the tunnel opening), at the same depth as any existing workers or equipment already visible. They should look like part of a shift on site, not the subject of a portrait.',
+      'Place the new person standing or crouched on the sand or gravel to the left or right third of the frame, clearly beside the existing pair and their sampling setup — same scale, never blocking the pipe, the pond horizon, or the equipment between the two workers.',
   },
   {
     id: 'vehicle-in-the-mine',
@@ -43,7 +45,12 @@ const BOLIDEN_SCENE_DATA = [
     imagePath: 'assets/images/boliden/prompt-backgrounds/coworker-with-machine.jpeg',
     nativeAspect: '16:9',
     replaceReferenceSubject: true,
-    primaryFace: { strategy: 'swap-only' },
+    // hair.length is the target person's hair length in this image. The
+    // face-swap-only strategy compares it against the selfie's parsed hair
+    // length and falls back to two-pass on a strict short↔long clash —
+    // InsightFace doesn't move hair, so a long-haired selfie onto this
+    // short-haired body would keep the body's hair and read wrong.
+    primaryFace: { strategy: 'swap-only', hair: { length: 'short' } },
     ppeHint:
       'Neon hi-vis shirt with reflective stripes, hard hat with headlamp, safety glasses, ear protection, chin strap — match what is visible in the reference.',
     promptHint:
@@ -56,7 +63,7 @@ const BOLIDEN_SCENE_DATA = [
       'assets/images/boliden/prompt-backgrounds/coworker-with-measuring-instrument.jpeg',
     nativeAspect: '16:9',
     replaceReferenceSubject: true,
-    primaryFace: { strategy: 'swap-only' },
+    primaryFace: { strategy: 'swap-only', hair: { length: 'long' } },
     ppeHint:
       'Neon hi-vis jacket with reflective stripes, hard hat (with ear protection and chin strap if present), safety glasses — match what is visible in the reference.',
     promptHint:
