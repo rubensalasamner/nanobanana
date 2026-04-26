@@ -4,9 +4,17 @@
 // target `input_image` (where the face goes) and a source `swap_image` (where
 // the face comes from), and returns a URL to the swapped image.
 //
-// Graceful degradation: if REPLICATE_API_TOKEN is missing, or the call fails,
-// or the model returns nothing, this returns null so callers can fall back to
-// the pre-swap image.
+// Return shape: always { image, reason }.
+//   - On success:    { image: {mime, buf}, reason: null }
+//   - On failure:    { image: null, reason: 'no_face_found' | 'timeout'
+//                                          | 'api_error' | 'no_output'
+//                                          | 'missing_inputs' | 'disabled' }
+//
+// The typed `reason` lets callers distinguish a recoverable infra failure
+// (timeout, api_error — safe to fall back to the pre-swap image) from a
+// fatal user-input failure (no_face_found — the selfie or target has no
+// detectable face and no amount of retry will help). The pipeline uses that
+// distinction to serve 422 instead of silently returning Pass 1.
 
 import Replicate from 'replicate';
 
@@ -74,17 +82,27 @@ async function fetchOutputAsBuffer(output) {
   return { mime, buf };
 }
 
+// Classify a failed Replicate run from its streamed container logs. The
+// model's Python worker prints "No face found" to stdout when InsightFace's
+// get() returns an empty list on either input; that's the one case we want to
+// surface as a user-fixable error rather than a recoverable infra failure.
+function classifyNoOutputReason(predictionLogsTail) {
+  if (typeof predictionLogsTail !== 'string') return 'no_output';
+  if (/No face found/i.test(predictionLogsTail)) return 'no_face_found';
+  return 'no_output';
+}
+
 export async function swapFace({ targetImage, sourceFace, reqId, log, modelRef }) {
   if (!isFaceSwapAvailable()) {
     log?.(reqId, 'warn', 'faceSwap.skip.noToken');
-    return null;
+    return { image: null, reason: 'disabled' };
   }
   if (!targetImage?.buf || !sourceFace?.buf) {
     log?.(reqId, 'warn', 'faceSwap.skip.missingInputs', {
       hasTarget: Boolean(targetImage?.buf),
       hasSource: Boolean(sourceFace?.buf),
     });
-    return null;
+    return { image: null, reason: 'missing_inputs' };
   }
 
   const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
@@ -150,8 +168,10 @@ export async function swapFace({ targetImage, sourceFace, reqId, log, modelRef }
         const tail = lastPrediction.logs.slice(-600);
         predictionLogsTail = tail;
       }
+      const reason = classifyNoOutputReason(predictionLogsTail);
       log?.(reqId, 'warn', 'faceSwap.noOutput', {
         ms: Date.now() - start,
+        reason,
         outputType: Array.isArray(output) ? 'array' : typeof output,
         outputLength: Array.isArray(output) ? output.length : undefined,
         firstItemType: Array.isArray(output) ? typeof output[0] : undefined,
@@ -168,14 +188,14 @@ export async function swapFace({ targetImage, sourceFace, reqId, log, modelRef }
         predictionError: lastPrediction?.error ?? null,
         predictionLogsTail,
       });
-      return null;
+      return { image: null, reason };
     }
     log?.(reqId, 'log', 'faceSwap.ok', {
       ms: Date.now() - start,
       outBytes: result.buf.length,
       outMime: result.mime,
     });
-    return result;
+    return { image: result, reason: null };
   } catch (err) {
     const aborted =
       timedOut ||
@@ -195,14 +215,14 @@ export async function swapFace({ targetImage, sourceFace, reqId, log, modelRef }
       } catch {
         // ignore
       }
-    } else {
-      log?.(reqId, 'error', 'faceSwap.fail', {
-        message: err?.message,
-        status: err?.status,
-        ms: Date.now() - start,
-      });
+      return { image: null, reason: 'timeout' };
     }
-    return null;
+    log?.(reqId, 'error', 'faceSwap.fail', {
+      message: err?.message,
+      status: err?.status,
+      ms: Date.now() - start,
+    });
+    return { image: null, reason: 'api_error' };
   } finally {
     clearTimeout(timer);
   }

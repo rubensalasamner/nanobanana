@@ -43,10 +43,24 @@ const BOLIDEN_SCENE_DATA = [
     imagePath: 'assets/images/boliden/prompt-backgrounds/coworker-with-machine.jpeg',
     nativeAspect: '16:9',
     replaceReferenceSubject: true,
+    primaryFace: { strategy: 'swap-only' },
     ppeHint:
       'Neon hi-vis shirt with reflective stripes, hard hat with headlamp, safety glasses, ear protection, chin strap — match what is visible in the reference.',
     promptHint:
       'Underground mine beside a yellow industrial vehicle with bright work-lights and dark rock. Harsh mixed lighting from machine LEDs and the headlamp — skin tones and shadows must match that environment.',
+  },
+  {
+    id: 'coworker-with-measuring-instrument',
+    label: 'Coworker with measuring instrument',
+    imagePath:
+      'assets/images/boliden/prompt-backgrounds/coworker-with-measuring-instrument.jpeg',
+    nativeAspect: '16:9',
+    replaceReferenceSubject: true,
+    primaryFace: { strategy: 'swap-only' },
+    ppeHint:
+      'Neon hi-vis jacket with reflective stripes, hard hat (with ear protection and chin strap if present), safety glasses — match what is visible in the reference.',
+    promptHint:
+      'Outdoor lakeside setting in overcast daylight. Keep natural subdued lighting and soft shadows; skin tones and highlights must match cloudy daylight. Keep the survey/measuring instrument and tripod exactly as in the reference.',
   },
   {
     id: 'water-samples',
@@ -71,6 +85,18 @@ const BOLIDEN_SCENE_DATA = [
       'The scene is an indoor mine-site canteen or break room: bright cool fluorescent light, white walls, utilitarian tables and chairs. The photograph should feel like a candid work break — relaxed, social, same lighting on faces and gear as the rest of the room.',
     placementHint:
       'Place the new person at a table or standing beside one in the mid-ground, left or right of centre — with coworkers at similar scale, never blocking the main group at the table and never unnaturally large in frame.',
+  },
+  {
+    id: 'meeting-at-the-mill',
+    label: 'Meeting at the mill',
+    imagePath: 'assets/images/boliden/prompt-backgrounds/Meeting at the mill.jpeg',
+    nativeAspect: '16:9',
+    ppeHint:
+      'Full hi-vis coveralls or jacket and trousers with reflective stripes, yellow hard hat with ear protection, safety glasses, gloves — match the crew on the platform.',
+    promptHint:
+      'Large indoor mill or processing plant: metal gratings, yellow guardrails, overhead pipes and machinery, bright industrial lighting. Skin tones and shadows must match that environment — documentary crew discussion, not a portrait.',
+    placementHint:
+      'Place the new person on the same raised platform as the group, toward the left or right edge of the frame (not in the centre of the huddle), at the same depth and scale as the existing workers — part of the meeting, never blocking the crane sign or the main group.',
   },
 ];
 

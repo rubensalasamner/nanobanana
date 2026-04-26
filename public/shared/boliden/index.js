@@ -3,7 +3,11 @@
 // identity-description helper so callers don't need to know the internal
 // module split.
 
-export { buildIdentityLockBlock, describePersonAppearance } from './identity.js';
+export {
+  buildIdentityLockBlock,
+  describePersonAppearance,
+  parseDescribeResponse,
+} from './identity.js';
 export { buildSceneIntegrationBlock, buildVisualIntegrationBlock } from './scene.js';
 export { buildConstraintsBlock } from './constraints.js';
 export { buildInsertPrompt } from './prompt-insert.js';

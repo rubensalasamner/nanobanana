@@ -48,6 +48,7 @@ const stepStyle = document.getElementById('step-style');
 const stepResult = document.getElementById('step-result');
 const stepShare = document.getElementById('step-share');
 const resultPhoto = document.getElementById('resultPhoto');
+const resultGenerateTiming = document.getElementById('resultGenerateTiming');
 const btnChangeStyle = document.getElementById('btnChangeStyle');
 const btnShareResult = document.getElementById('btnShareResult');
 const btnPrintResult = document.getElementById('btnPrintResult');
@@ -290,8 +291,79 @@ if (document.body) {
 const modeStrategy = MODE_STRATEGIES[appMode];
 idleTimeoutMs = modeStrategy.idleTimeoutMs;
 const useNativeMobileCapture = shouldUseNativeMobileCapture();
+
+/** Dev/testing: `?reuseSelfie=1` saves each capture to localStorage and reloads skip to the style step. `?reuseSelfie=clear` wipes the cache for this company/mode/aspect. */
+const REUSE_SELFIE_TRUTHY = new Set(['1', 'true', 'yes']);
+function resolveReuseSelfieParam(raw) {
+  const v = String(raw ?? '').trim().toLowerCase();
+  if (v === 'clear') return 'clear';
+  if (REUSE_SELFIE_TRUTHY.has(v)) return 'on';
+  return 'off';
+}
+const reuseSelfieParam = resolveReuseSelfieParam(launchSearch.get('reuseSelfie'));
+
+function reuseSelfieStorageKey() {
+  return `nanobanana:reuseSelfie:v1:${companyId}:${appMode}:${outputAspectId}`;
+}
+
+function clearReuseSelfieCache() {
+  try {
+    localStorage.removeItem(reuseSelfieStorageKey());
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+function stripReuseSelfieQueryParam() {
+  try {
+    const u = new URL(window.location.href);
+    if (!u.searchParams.has('reuseSelfie')) return;
+    u.searchParams.delete('reuseSelfie');
+    history.replaceState({}, '', `${u.pathname}${u.search}${u.hash}`);
+  } catch {
+    /* ignore */
+  }
+}
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onloadend = () => resolve(r.result);
+    r.onerror = () => reject(new Error('read failed'));
+    r.readAsDataURL(blob);
+  });
+}
+
+async function saveReuseSelfieBlob(blob) {
+  if (reuseSelfieParam !== 'on' || !blob) return;
+  try {
+    const dataUrl = await blobToDataUrl(blob);
+    if (typeof dataUrl === 'string') {
+      localStorage.setItem(reuseSelfieStorageKey(), dataUrl);
+    }
+  } catch (e) {
+    console.warn('reuseSelfie: could not save to localStorage', e);
+  }
+}
+
+async function loadReuseSelfieBlob() {
+  if (reuseSelfieParam !== 'on') return null;
+  let dataUrl;
+  try {
+    dataUrl = localStorage.getItem(reuseSelfieStorageKey());
+  } catch {
+    return null;
+  }
+  if (!dataUrl || !dataUrl.startsWith('data:image/')) return null;
+  try {
+    const res = await fetch(dataUrl);
+    return await res.blob();
+  } catch {
+    return null;
+  }
+}
+
 let selectedSceneId = null;
-let selectedPipeline = null;
 let selectedCardKey = null;
 
 // ----- Style loading line -----
@@ -495,12 +567,11 @@ function renderBolidenSceneGrid() {
     card.dataset.prompt = 'boliden';
     card.dataset.sceneId = scene.id;
     card.dataset.cardKey = `scene:${scene.id}`;
-    if (
-      appMode === APP_MODES.MOBILE &&
-      typeof scene.mobilePipeline === 'string' &&
-      scene.mobilePipeline
-    ) {
-      card.dataset.pipeline = scene.mobilePipeline;
+    // primaryFace is metadata only — the server reads it directly from the
+    // scene library, so we don't send it back over the wire. Tagging the
+    // card here lets future UI affordances (e.g. badges) key off of it.
+    if (scene.primaryFace?.strategy) {
+      card.dataset.primaryFace = scene.primaryFace.strategy;
     }
 
     grid.appendChild(card);
@@ -779,6 +850,7 @@ async function handleNativeCaptureChange(event) {
     const tmpCtx = tmp.getContext('2d');
     tmpCtx.drawImage(croppedImg, 0, 0, upW, upH);
     latestBlob = await toBlobAsync(tmp, 'image/jpeg', 0.85);
+    void saveReuseSelfieBlob(latestBlob);
 
     if (btnSnap) btnSnap.classList.add('hidden');
     btnRetake.classList.remove('hidden');
@@ -881,44 +953,49 @@ async function takeSnapshot() {
   const upW = Math.round(outputAspectPreset.uploadWidth * scale);
   const upH = Math.round(outputAspectPreset.uploadHeight * scale);
 
-  // Convert cropped data URL to blob for upload (in background)
-  const croppedImg = new Image();
-  croppedImg.onload = () => {
+  let snapshotBlob = null;
+  try {
+    const croppedImg = await new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = croppedDataUrl;
+    });
     const tmp = document.createElement('canvas');
     tmp.width = upW;
     tmp.height = upH;
     const tmpCtx = tmp.getContext('2d');
     tmpCtx.drawImage(croppedImg, 0, 0, upW, upH);
-    tmp.toBlob(
-      (b) => {
-        latestBlob = b;
-      },
-      'image/jpeg',
-      0.85
-    );
-  };
-  croppedImg.src = croppedDataUrl;
+    snapshotBlob = await toBlobAsync(tmp, 'image/jpeg', 0.85);
+    latestBlob = snapshotBlob;
+    void saveReuseSelfieBlob(snapshotBlob);
+  } catch (err) {
+    console.error('Snapshot crop failed:', err);
+    camStatus.textContent = 'Could not process snapshot.';
+  }
 
   // Store cropped image for style step preview (but don't show it)
   if (stylePreview) {
     stylePreview.src = croppedDataUrl;
   }
-  if (appMode === APP_MODES.MOBILE) {
-    if (btnSnap) btnSnap.classList.add('hidden');
-    btnRetake.classList.remove('hidden');
-    if (btnContinue) btnContinue.classList.remove('hidden');
-  } else {
-    btnRetake.classList.remove('hidden');
-  }
-  btnApply.disabled = !selectedPrompt;
-  camStatus.textContent = 'Snapshot captured.';
+  if (snapshotBlob) {
+    if (appMode === APP_MODES.MOBILE) {
+      if (btnSnap) btnSnap.classList.add('hidden');
+      btnRetake.classList.remove('hidden');
+      if (btnContinue) btnContinue.classList.remove('hidden');
+    } else {
+      btnRetake.classList.remove('hidden');
+    }
+    btnApply.disabled = !selectedPrompt;
+    camStatus.textContent = 'Snapshot captured.';
 
-  if (appMode !== APP_MODES.MOBILE) {
-    if (styleStepTimeout) clearTimeout(styleStepTimeout);
-    styleStepTimeout = setTimeout(() => {
-      styleStepTimeout = null;
-      showStep('style');
-    }, 2000);
+    if (appMode !== APP_MODES.MOBILE) {
+      if (styleStepTimeout) clearTimeout(styleStepTimeout);
+      styleStepTimeout = setTimeout(() => {
+        styleStepTimeout = null;
+        showStep('style');
+      }, 2000);
+    }
   }
 
   isTakingSnapshot = false;
@@ -962,7 +1039,6 @@ function restartFlow(targetStep = 'welcome') {
   selectedPrompt = null;
   selectedSceneId = null;
   selectedPresetId = null;
-  selectedPipeline = null;
   selectedCardKey = null;
   latestShare = null;
   grid?.querySelectorAll('[data-prompt]').forEach((el) => (el.style.outline = ''));
@@ -997,7 +1073,6 @@ function handlePresetTap(e) {
   selectedPrompt = btn.dataset.prompt;
   selectedSceneId = btn.dataset.sceneId || null;
   selectedPresetId = btn.dataset.presetId || null;
-  selectedPipeline = btn.dataset.pipeline || null;
   selectedCardKey = btn.dataset.cardKey || null;
   btnApply.disabled = !latestBlob;
   apiStatus.textContent = 'Selected: ' + (btn.textContent.trim() || 'preset');
@@ -1026,9 +1101,6 @@ function createEditAndShareFormData(imageBlob, prompt, sceneId) {
   form.append('company', companyId);
   form.append('aspect', outputAspectId);
   if (sceneId) form.append('sceneId', sceneId);
-  if (appMode === APP_MODES.MOBILE && selectedPipeline) {
-    form.append('pipeline', selectedPipeline);
-  }
   return form;
 }
 
@@ -1142,6 +1214,24 @@ async function downloadShareImage(imageUrl, fallbackFilename = 'nanobanana-image
   URL.revokeObjectURL(blobUrl);
 }
 
+function formatBolidenGenerateDuration(ms) {
+  if (!Number.isFinite(ms) || ms < 0) return '';
+  const sec = (ms / 1000).toFixed(2);
+  const roundedMs = Math.round(ms);
+  return `${sec} s · ${roundedMs} ms`;
+}
+
+function setResultGenerateTiming(ms) {
+  if (!resultGenerateTiming) return;
+  if (!Number.isFinite(ms) || ms < 0) {
+    resultGenerateTiming.textContent = '';
+    resultGenerateTiming.classList.add('hidden');
+    return;
+  }
+  resultGenerateTiming.textContent = `Generated in ${formatBolidenGenerateDuration(ms)}`;
+  resultGenerateTiming.classList.remove('hidden');
+}
+
 function attachResultActions(out) {
   btnDownload.disabled = false;
   btnDownload.onclick = () => {
@@ -1198,6 +1288,7 @@ function renderNoOpPhotoResult(imageBlob) {
 
   apiStatus.textContent =
     appMode === APP_MODES.MOBILE ? 'Done. Your image is ready.' : 'Done. Your photo is ready.';
+  setResultGenerateTiming(null);
   showStep('result');
   updateResultButtons();
 }
@@ -1244,7 +1335,12 @@ function setupMobileShareActions(shareUrl) {
   }
 }
 
-function renderApplySuccess(out) {
+function renderApplySuccess(out, bolidenGenerateMs) {
+  if (companyId === COMPANY_IDS.BOLIDEN && Number.isFinite(bolidenGenerateMs)) {
+    setResultGenerateTiming(bolidenGenerateMs);
+  } else {
+    setResultGenerateTiming(null);
+  }
   photo.src = out.imageUrl;
   latestShare = out;
   if (resultPhoto) {
@@ -1328,9 +1424,12 @@ async function applyPreset() {
 
   apiStatus.textContent = 'Applying preset…';
   try {
+    const t0 = companyId === COMPANY_IDS.BOLIDEN ? performance.now() : null;
     const out = await callImageEditAndShareAPI(latestBlob, promptAtStart, selectedSceneId);
+    const bolidenGenerateMs =
+      companyId === COMPANY_IDS.BOLIDEN && t0 != null ? performance.now() - t0 : null;
     setStyleCardLoading(cardKeyAtStart, false);
-    renderApplySuccess(out);
+    renderApplySuccess(out, bolidenGenerateMs);
   } catch (err) {
     console.log(
       'Error caught in applyPreset:',
@@ -1380,7 +1479,6 @@ if (btnChangeStyle) {
     selectedPrompt = null;
     selectedSceneId = null;
     selectedPresetId = null;
-    selectedPipeline = null;
     selectedCardKey = null;
     isApplying = false; // Reset applying flag
 
@@ -1514,7 +1612,20 @@ if (btnPrintResult) {
   btnPrintResult.addEventListener('click', handler);
 }
 if (btnRestart) {
-  onTap(btnRestart, restartFlow);
+  onTap(btnRestart, () => {
+    // In mobile+Boliden we want "Start over" to reliably return to the
+    // launch context (URL params) so the experience doesn't fall back to the
+    // default booth flow.
+    if (appMode === APP_MODES.MOBILE && companyId === COMPANY_IDS.BOLIDEN) {
+      const params = new URLSearchParams();
+      params.set('mode', APP_MODES.MOBILE);
+      params.set('company', COMPANY_IDS.BOLIDEN);
+      if (outputAspectId) params.set('aspect', outputAspectId);
+      window.location.assign(`/?${params.toString()}`);
+      return;
+    }
+    restartFlow(modeStrategy.initialStep);
+  });
 }
 
 // ----- Desktop shortcut -----
@@ -1598,9 +1709,33 @@ window.addEventListener('focus', () => {
 
 modeStrategy.applyLayout();
 applyCompanyExperience();
-currentStep = modeStrategy.initialStep;
-showStep(currentStep);
-updateResultButtons();
+
+(async function initWizardFromEntry() {
+  if (reuseSelfieParam === 'clear') {
+    clearReuseSelfieCache();
+    stripReuseSelfieQueryParam();
+  }
+
+  let startStep = modeStrategy.initialStep;
+  if (reuseSelfieParam === 'on') {
+    const cached = await loadReuseSelfieBlob();
+    if (cached) {
+      latestBlob = cached;
+      startStep = 'style';
+      if (camStatus) {
+        camStatus.textContent =
+          'Loaded saved selfie (reuseSelfie). Choose a scene to generate.';
+      }
+      if (apiStatus) {
+        apiStatus.textContent = 'Using cached selfie — pick a scene.';
+      }
+    }
+  }
+
+  currentStep = startStep;
+  showStep(currentStep);
+  updateResultButtons();
+})();
 
 async function loadDeployStamp() {
   if (!deployStamp || !shouldShowDeployBanner()) return;

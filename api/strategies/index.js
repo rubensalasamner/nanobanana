@@ -41,6 +41,12 @@ export function selectStrategy(ctx) {
  * returns null (couldn't produce an image), try the next one in priority
  * order. The default strategy is guaranteed to be attempted last.
  *
+ * Fatal short-circuit: if a strategy returns a result carrying `fatalReason`
+ * (e.g. `no_face_found`), the loop stops and that fatal result is returned
+ * as-is. Trying the next strategy would use the same selfie and fail the
+ * same way — burning another ~20s of Replicate time for no benefit — and
+ * would also risk masking the real issue by serving a degraded fallback.
+ *
  * @param {import('./types.js').StrategyContext} ctx
  * @returns {Promise<import('./types.js').StrategyResult|null>}
  */
@@ -55,6 +61,14 @@ export async function runStrategyWithFallback(ctx) {
       if (result?.image) {
         ctx.log(ctx.reqId, 'log', 'strategy.ok', {
           name: result.strategyName || s.name,
+          tried,
+        });
+        return result;
+      }
+      if (result?.fatalReason) {
+        ctx.log(ctx.reqId, 'warn', 'strategy.fatal', {
+          name: s.name,
+          fatalReason: result.fatalReason,
           tried,
         });
         return result;

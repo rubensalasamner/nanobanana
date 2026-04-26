@@ -10,6 +10,19 @@
 //     lock facial geometry). Instead, tell Gemini the face is a placeholder
 //     and demand anatomically correct head-to-body proportions matching other
 //     workers in the scene.
+//
+// Anti-hero history:
+//   The original placeholder mode included a "Swap targeting hint" telling
+//   Gemini to make the new worker's face the clearest/most prominent in the
+//   frame. In practice this fought the head-size cap: Gemini would oblige
+//   the prominence instruction by pulling the worker into the foreground
+//   (run i62leYvO meeting-at-the-mill: faceFracH=0.22, exceeding 0.18 alarm).
+//   Targeting is the bbox detector's job, not the composer's — removed.
+//   The size anchor is now expressed relative to existing workers in the
+//   scene instead of as a frame-height percentage; "no larger than the
+//   nearest existing worker" is something the model can actually verify
+//   against image 1, whereas "10–14% of frame height" turns into a soft
+//   suggestion the model bends when a portrait crop would look better.
 export function buildIdentityLockBlock(personBrief, hasSceneImage = true, options = {}) {
   const { faceWillBeSwapped = false, slim = false } = options;
   const faceRef = hasSceneImage ? 'image 2' : 'the provided selfie';
@@ -22,10 +35,7 @@ export function buildIdentityLockBlock(personBrief, hasSceneImage = true, option
       `Rough face from ${faceRef}; exact features not needed — a later step replaces it. Body, PPE, pose, and framing match ${sceneRef} naturally; the added worker is just one of the workers in the scene, not a centered or posed subject.`
     );
     lines.push(
-      `Head size: 10–14% of total frame height. This is larger than a typical background-worker head but still consistent with a documentary shot — the person is in the mid-ground, naturally placed (side third or similar), not forced to the foreground or center. Head-to-body proportion stays anatomical (head ~1/7 of standing body height).`
-    );
-    lines.push(
-      `Swap targeting hint: make the added worker's face the clearest/most prominent visible face in the frame (slightly closer or slightly more central than other workers), while still reading as a natural documentary scene — not a hero subject or portrait.`
+      `Size anchor (HARD): the new worker's HEAD must be NO LARGER than the heads of the existing workers visible in ${sceneRef}. Match their depth — same plane or slightly behind, never in front. If you would otherwise make the head larger than any existing head in ${sceneRef}, place the new worker further from the camera until the heads match. No portrait crop, no close-up, no hero subject. Cap: head ≤ 12% of total frame height regardless. Head-to-body proportion stays anatomical (head ~1/7 of standing body height).`
     );
     lines.push(
       `Face must be a clean swap target: 3/4 or frontal to camera (not profile), unoccluded — no helmet brim shadowing the eyes, no hand/mug/tool across the face, no hair or headset covering features. Eyes open, mouth neutral.`
@@ -43,10 +53,7 @@ export function buildIdentityLockBlock(personBrief, hasSceneImage = true, option
       `The face from ${faceRef} is a rough placeholder. Do NOT try to copy its exact features. A later automated step will replace the face. Your job here is to produce a photographically correct body and head in the scene — proportions, pose, framing, PPE, lighting — with any roughly plausible face in the right position and size.`
     );
     lines.push(
-      `Head-to-body proportion and face size: the new person's head must be anatomically proportional to their own torso (head ~1/7 to 1/8 of standing body height) and match the apparent head size of the other workers in ${sceneRef}. The head occupies 10–14% of the total frame height — large enough for clear facial detail but still a documentary composition. Do NOT center the person, do NOT force them into the foreground, do NOT make them the "primary subject" or the largest/closest figure. Place them naturally in the scene alongside existing workers — side third of the frame, mid-ground, one of the crew. No portrait crop, no close-up.`
-    );
-    lines.push(
-      `Swap targeting hint: among all visible faces, the added worker's face is the clearest/most prominent (slightly closer or slightly more central than other workers), while the overall composition remains a natural documentary shot — not a hero subject or portrait.`
+      `Size anchor (HARD constraint, verify against ${sceneRef}): the new worker's HEAD must be NO LARGER than the heads of the existing workers in ${sceneRef}. Same depth plane as them or slightly behind — never in front, never closer to the camera. If you would otherwise render a head larger than any existing head in ${sceneRef}, push the new worker further into the scene until their head matches. Absolute cap: head ≤ 12% of total frame height regardless of scene. Head-to-body proportion stays anatomical (head ~1/7 to 1/8 of standing body height). Do NOT center the person, do NOT force them into the foreground, do NOT make them the "primary subject" or the largest/closest figure. Place them naturally alongside existing workers — side third of the frame, mid-ground, one of the crew. No portrait crop, no close-up, no hero composition.`
     );
     lines.push(
       `Face orientation and occlusion: the placeholder face is 3/4 or frontal to camera so a later face-swap has a clean target. No helmet brim shadowing across the eyes, no hand or mug or tool covering any part of the face, no hair or headset obscuring features. Eyes open, mouth neutral, no extreme expressions.`
@@ -83,22 +90,84 @@ export function buildIdentityLockBlock(personBrief, hasSceneImage = true, option
   return lines.join('\n');
 }
 
+// The describe call doubles as a face-presence pre-check. Doing it here
+// avoids a second Gemini round-trip (the alternative `detectFaceBbox(selfie)`
+// would add ~3–5 s on every request). The model is asked to emit a leading
+// `Face detected: yes|no` line; if `no`, the pipeline can return 422
+// immediately and skip ~25 s of doomed Replicate face-swap attempts.
+//
+// Conservative semantics: only a clear, parseable `no` triggers fail-fast.
+// Malformed / missing responses fall through with `faceDetected: null` and
+// the pipeline proceeds normally — we don't let a flaky parse block real
+// users, we just lose the early-exit optimisation for that request.
 const IDENTITY_BRIEF_INSTRUCTIONS = [
-  'Look at the person in this selfie and produce a concise identity brief.',
-  'Respond with exactly these labeled lines, one per line, nothing else:',
+  'Look at this image. First decide whether it contains a clearly visible human face suitable for face-swap (frontal or 3/4 view, eyes and primary features visible, not heavily occluded by hand/object/severe shadow).',
   '',
-  'Hair: <color, length, texture, style>',
-  'Face: <overall face shape>',
-  'Eyes: <color and shape; eyebrow color and shape>',
-  'Nose: <shape and size>',
-  'Mouth: <lip shape and fullness>',
-  'Skin: <tone and notable complexion traits>',
-  'Age: <approximate age range>',
-  'Distinctive: <glasses, facial hair, freckles, moles, piercings, visible tattoos, scars; or "none">',
+  'OUTPUT FORMAT — follow exactly, no extra text:',
+  '',
+  '1. The first line must be exactly one of:',
+  '     Face detected: yes',
+  '     Face detected: no',
+  '',
+  '2. If you wrote "Face detected: no", stop immediately. Output ONLY that single line.',
+  '',
+  '3. If you wrote "Face detected: yes", continue with these labeled lines, one per line, in this exact order, and nothing else:',
+  '',
+  '     Hair: <color, length, texture, style>',
+  '     Face: <overall face shape>',
+  '     Eyes: <color and shape; eyebrow color and shape>',
+  '     Nose: <shape and size>',
+  '     Mouth: <lip shape and fullness>',
+  '     Skin: <tone and notable complexion traits>',
+  '     Age: <approximate age range>',
+  '     Distinctive: <glasses, facial hair, freckles, moles, piercings, visible tattoos, scars; or "none">',
   '',
   'Be objective and specific. Do not mention clothing, background, pose, or expression.',
 ].join('\n');
 
+/**
+ * @typedef {Object} DescribeResult
+ * @property {string|null} brief        Identity brief without the verdict line, or null.
+ * @property {boolean|null} faceDetected `true` / `false` from the verdict line; `null` if unparseable.
+ * @property {string|null} raw          Trimmed model output as received.
+ */
+
+/**
+ * Pure parser for the model response. Exposed so the smoke test can cover
+ * the four canonical shapes (yes+brief, no, malformed, empty) without
+ * needing a real Gemini round-trip.
+ *
+ * @param {string|null|undefined} text
+ * @returns {DescribeResult}
+ */
+export function parseDescribeResponse(text) {
+  if (typeof text !== 'string' || !text.trim()) {
+    return { brief: null, faceDetected: null, raw: null };
+  }
+  const raw = text.trim();
+  const lines = raw.split(/\r?\n/);
+  const firstLine = lines[0]?.trim() || '';
+  const verdict = /^Face detected:\s*(yes|no)\s*$/i.exec(firstLine);
+  if (!verdict) {
+    return { brief: raw, faceDetected: null, raw };
+  }
+  if (verdict[1].toLowerCase() === 'no') {
+    return { brief: null, faceDetected: false, raw };
+  }
+  const brief = lines.slice(1).join('\n').trim() || null;
+  return { brief, faceDetected: true, raw };
+}
+
+/**
+ * @param {Object} args
+ * @param {import('@google/genai').GoogleGenAI} args.ai
+ * @param {string} args.fileMime
+ * @param {Buffer} args.fileBuf
+ * @param {(parsed: DescribeResult) => void} [args.onSuccess]
+ * @param {() => void} [args.onEmpty]
+ * @param {(err: unknown) => void} [args.onError]
+ * @returns {Promise<DescribeResult>}
+ */
 export async function describePersonAppearance({ ai, fileMime, fileBuf, onSuccess, onEmpty, onError }) {
   try {
     const resp = await ai.models.generateContent({
@@ -109,14 +178,15 @@ export async function describePersonAppearance({ ai, fileMime, fileBuf, onSucces
       ],
     });
     const text = resp?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-    if (text) {
-      onSuccess?.(text);
-      return text;
+    const parsed = parseDescribeResponse(text);
+    if (parsed.raw) {
+      onSuccess?.(parsed);
+    } else {
+      onEmpty?.();
     }
-    onEmpty?.();
-    return null;
+    return parsed;
   } catch (err) {
     onError?.(err);
-    return null;
+    return { brief: null, faceDetected: null, raw: null };
   }
 }

@@ -20,6 +20,7 @@
 
 import sharp from 'sharp';
 
+import { compositeIntoRegion, extractCrop } from './cropComposite.js';
 import { detectNewFaceBbox, isFaceDetectEnabled } from './faceDetect.js';
 import { swapFace } from './faceSwap.js';
 
@@ -37,6 +38,39 @@ const MIN_FACE_NORM = 0.03;
 // inswapper_128 (128×128), so anything smaller than ~128 in either dimension
 // adds no value vs a full-frame swap.
 const MIN_CROP_PX = 128;
+
+// Composition diagnostic thresholds. The placeholder/strict prompts both ask
+// for the new worker's head to be 10–14% of frame height (placeholder) or
+// 6–10% (strict). Anything wider than ~13% horizontally or taller than ~18%
+// vertically is a foreground-hero composition — Gemini overruled the
+// "mid-ground, side third" constraint and produced a portrait close-up
+// instead. We surface this as a `composition.faceSize` log with a
+// `foregroundHero` flag so the rate is grep-able; we do not retry (would
+// double Gemini latency) and we do not block the swap (the swap targeting
+// is correct regardless of the close-up).
+const FOREGROUND_HERO_FRAC_W = 0.13;
+const FOREGROUND_HERO_FRAC_H = 0.18;
+
+/**
+ * Pure check exposed for the smoke test. Returns true when the normalized
+ * face bbox exceeds either dimension threshold.
+ *
+ * @param {{xMinNorm:number,xMaxNorm:number,yMinNorm:number,yMaxNorm:number}|null} normBox
+ * @param {{widthFrac?:number,heightFrac?:number}} [thresholds]
+ * @returns {boolean}
+ */
+export function isForegroundHero(normBox, thresholds = {}) {
+  if (!normBox) return false;
+  const wMax = thresholds.widthFrac ?? FOREGROUND_HERO_FRAC_W;
+  const hMax = thresholds.heightFrac ?? FOREGROUND_HERO_FRAC_H;
+  const w = normBox.xMaxNorm - normBox.xMinNorm;
+  const h = normBox.yMaxNorm - normBox.yMinNorm;
+  return w > wMax || h > hMax;
+}
+
+function round3(n) {
+  return Math.round(n * 1000) / 1000;
+}
 
 /**
  * @returns {boolean}
@@ -64,18 +98,14 @@ function expandBoxWithPadding(normBox, paddingFactor, width, height) {
   };
 }
 
-async function makeFeatherMask(width, height, featherPx) {
-  const inset = Math.max(1, Math.floor(featherPx));
-  const svg = `<svg width="${width}" height="${height}"><rect x="${inset}" y="${inset}" width="${
-    width - 2 * inset
-  }" height="${height - 2 * inset}" fill="white"/></svg>`;
-  return sharp(Buffer.from(svg)).blur(featherPx).greyscale().png().toBuffer();
-}
-
 /**
  * @typedef {Object} TargetedFaceSwapResult
  * @property {boolean} ok
  * @property {'ok'|'disabled'|'missing-inputs'|'no-metadata'|'no-bbox'|'tiny-face'|'crop-too-small'|'swap-failed'|'composite-failed'} reason
+ * @property {'no_face_found'|'timeout'|'api_error'|'no_output'|'disabled'|'missing_inputs'|null} [swapReason]
+ *   Subclassifies a `swap-failed` outcome with the upstream swapFace reason.
+ *   Lets the caller decide whether to fall back (timeout/api_error) or
+ *   surface a user-visible fatal (no_face_found).
  * @property {{mime:string, buf:Buffer}|null} image
  * @property {{left:number,top:number,width:number,height:number}|null} [cropRect]
  * @property {number} [detectMs]
@@ -134,6 +164,13 @@ export async function applyTargetedFaceSwap({
 
   const faceNormW = normBox.xMaxNorm - normBox.xMinNorm;
   const faceNormH = normBox.yMaxNorm - normBox.yMinNorm;
+  const foregroundHero = isForegroundHero(normBox);
+  log?.(reqId, foregroundHero ? 'warn' : 'log', 'composition.faceSize', {
+    faceFracW: round3(faceNormW),
+    faceFracH: round3(faceNormH),
+    foregroundHero,
+    thresholds: { w: FOREGROUND_HERO_FRAC_W, h: FOREGROUND_HERO_FRAC_H },
+  });
   if (Math.min(faceNormW, faceNormH) < MIN_FACE_NORM) {
     log?.(reqId, 'warn', 'targetedSwap.skip.tinyFace', { faceNormW, faceNormH });
     return { ok: false, reason: 'tiny-face', image: null, detectMs };
@@ -147,7 +184,7 @@ export async function applyTargetedFaceSwap({
 
   let cropBuf;
   try {
-    cropBuf = await sharp(modifiedImage.buf).extract(cropRect).png().toBuffer();
+    cropBuf = await extractCrop({ image: modifiedImage, cropRect });
   } catch (err) {
     log?.(reqId, 'error', 'targetedSwap.crop.fail', {
       message: err?.message,
@@ -163,7 +200,7 @@ export async function applyTargetedFaceSwap({
   });
 
   const swapStart = Date.now();
-  const swapped = await swapFace({
+  const swapResult = await swapFace({
     targetImage: { mime: 'image/png', buf: cropBuf },
     sourceFace: selfie,
     reqId,
@@ -171,29 +208,28 @@ export async function applyTargetedFaceSwap({
   });
   const swapMs = Date.now() - swapStart;
 
-  if (!swapped?.buf) {
-    log?.(reqId, 'warn', 'targetedSwap.swap.failed', { swapMs });
-    return { ok: false, reason: 'swap-failed', image: null, detectMs, swapMs, cropRect };
+  if (!swapResult?.image?.buf) {
+    const swapReason = swapResult?.reason ?? 'no_output';
+    log?.(reqId, 'warn', 'targetedSwap.swap.failed', { swapMs, swapReason });
+    return {
+      ok: false,
+      reason: 'swap-failed',
+      swapReason,
+      image: null,
+      detectMs,
+      swapMs,
+      cropRect,
+    };
   }
 
+  const swapped = swapResult.image;
+
   try {
-    const swapResized = await sharp(swapped.buf)
-      .resize(cropRect.width, cropRect.height, { fit: 'fill' })
-      .toBuffer();
-
-    const featherPx = Math.max(4, Math.round(Math.min(cropRect.width, cropRect.height) * 0.04));
-    const mask = await makeFeatherMask(cropRect.width, cropRect.height, featherPx);
-
-    const swapWithAlpha = await sharp(swapResized)
-      .ensureAlpha()
-      .composite([{ input: mask, blend: 'dest-in' }])
-      .png()
-      .toBuffer();
-
-    const composed = await sharp(modifiedImage.buf)
-      .composite([{ input: swapWithAlpha, left: cropRect.left, top: cropRect.top }])
-      .png()
-      .toBuffer();
+    const composed = await compositeIntoRegion({
+      base: modifiedImage,
+      replacement: swapped.buf,
+      cropRect,
+    });
 
     log?.(reqId, 'log', 'targetedSwap.composite.ok', {
       outBytes: composed.length,

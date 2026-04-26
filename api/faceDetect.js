@@ -37,7 +37,39 @@ export function isFaceDetectEnabled() {
 // Parse Gemini's text response and extract a box_2d. The model is asked to
 // return a JSON array with one item; it sometimes wraps the JSON in code
 // fences or adds preamble text. Tolerate both.
-function extractBbox(text) {
+//
+// Robustness layers (each guards an observed Gemini misbehaviour):
+//   1. Regex-extract the first JSON array — the model occasionally adds
+//      preamble or wraps the array in markdown fences.
+//   2. Accept three field shapes: `box_2d` (per the prompt), `bbox`, or the
+//      raw 4-element array. The model has emitted all three across runs.
+//   3. Tolerate arrays with more than 4 elements by truncating to the first
+//      4 and revalidating. Observed in run JMWZ6tDz on coffee-break where
+//      the model emitted [205, 365, 345, 435, 435] (5 elements with a
+//      duplicated trailing value). The first 4 form a valid box (after the
+//      h/w recovery layer below) and we'd rather use it than fall through
+//      to a full-frame swap.
+//   4. If the standard [ymin,xmin,ymax,xmax] interpretation produces
+//      ymin >= ymax or xmin >= xmax, retry with a [ymin,xmin,height,width]
+//      interpretation. Observed in run aDB-QDRJ on meeting-at-the-mill where
+//      the model emitted [365,255,335,485] (h/w shape). Recovery is
+//      conservative: only kicks in when the standard shape is invalid, so a
+//      well-formed box never gets reinterpreted.
+//   5. Aspect-ratio sanity check: a face bbox is roughly square; reject
+//      anything wildly elongated (>5:1 either way). This is what catches a
+//      false positive where the model returns a bbox enclosing a doorway or
+//      a horizontal stripe.
+//
+// Returns { box, recovered } so the caller can log when fallback parsing
+// kicked in (useful for monitoring how flaky the model is). `recovered` is a
+// non-null string tag identifying which fallback layer fired:
+//   - 'truncated': source array had >4 elements, we used the first 4
+//   - 'h-w':       coords reinterpreted as [ymin,xmin,height,width]
+//   - 'truncated+h-w': both layers fired (rare)
+//
+// @param {string} text
+// @returns {null | { box: {ymin:number,xmin:number,ymax:number,xmax:number}, recovered: string|null }}
+export function parseBboxResponse(text) {
   if (!text || typeof text !== 'string') return null;
   const match = text.match(/\[[\s\S]*\]/);
   if (!match) return null;
@@ -49,13 +81,45 @@ function extractBbox(text) {
   }
   if (!Array.isArray(parsed) || parsed.length === 0) return null;
   const first = parsed[0];
-  const box = first?.box_2d ?? first?.bbox ?? first;
-  if (!Array.isArray(box) || box.length !== 4) return null;
-  const [ymin, xmin, ymax, xmax] = box.map(Number);
-  if (![ymin, xmin, ymax, xmax].every(Number.isFinite)) return null;
-  if (ymin >= ymax || xmin >= xmax) return null;
-  if ([ymin, xmin, ymax, xmax].some((v) => v < 0 || v > 1000)) return null;
-  return { ymin, xmin, ymax, xmax };
+  const raw = first?.box_2d ?? first?.bbox ?? first;
+  if (!Array.isArray(raw) || raw.length < 4) return null;
+
+  // Tolerate arrays with more than 4 elements by using only the first 4.
+  // Observed in run JMWZ6tDz on coffee-break: [205, 365, 345, 435, 435].
+  // The 5th element appears to be a duplicate/noise; the first 4 form a
+  // valid box (h/w shape, recovered by the layer below).
+  const truncated = raw.length > 4;
+  const nums = raw.slice(0, 4).map(Number);
+  if (!nums.every(Number.isFinite)) return null;
+  if (nums.some((v) => v < 0 || v > 1000)) return null;
+
+  const [a, b, c, d] = nums;
+  const ymin = a;
+  const xmin = b;
+  let ymax = c;
+  let xmax = d;
+  let hwRecovered = false;
+
+  if (ymin >= ymax || xmin >= xmax) {
+    const altYmax = ymin + c;
+    const altXmax = xmin + d;
+    const valid =
+      altYmax > ymin && altXmax > xmin && altYmax <= 1000 && altXmax <= 1000;
+    if (!valid) return null;
+    ymax = altYmax;
+    xmax = altXmax;
+    hwRecovered = true;
+  }
+
+  const w = xmax - xmin;
+  const h = ymax - ymin;
+  const ratio = w / h;
+  if (!Number.isFinite(ratio) || ratio < 0.2 || ratio > 5) return null;
+
+  const tags = [truncated && 'truncated', hwRecovered && 'h-w'].filter(Boolean);
+  const recovered = tags.length > 0 ? tags.join('+') : null;
+
+  return { box: { ymin, xmin, ymax, xmax }, recovered };
 }
 
 function toNormalized(box) {
@@ -166,8 +230,8 @@ export async function detectNewFaceBbox({
       .filter(Boolean)
       .join('\n') || '';
 
-  const box = extractBbox(text);
-  if (!box) {
+  const parsed = parseBboxResponse(text);
+  if (!parsed) {
     log?.(reqId, 'warn', 'faceDetect.noBbox', {
       ms: Date.now() - start,
       textPreview: text.slice(0, 200),
@@ -178,8 +242,9 @@ export async function detectNewFaceBbox({
 
   log?.(reqId, 'log', 'faceDetect.ok', {
     ms: Date.now() - start,
-    box,
+    box: parsed.box,
+    recovered: parsed.recovered,
     model: detectModel,
   });
-  return toNormalized(box);
+  return toNormalized(parsed.box);
 }

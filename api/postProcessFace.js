@@ -44,6 +44,10 @@ import { applyTargetedFaceSwap, isTargetedFaceSwapAvailable } from './targetedFa
  *        no-restore = swap ran, restore disabled or failed
  *        no-swap    = swap failed; original image returned
  *        skipped    = post-processing not attempted (no token, missing inputs, disabled)
+ * @property {'no_face_found'|'timeout'|'api_error'|'no_output'|'disabled'|'missing_inputs'|null} [swapReason]
+ *   Why the swap failed, when outcome === 'no-swap'. Callers that care about
+ *   distinguishing a user-fixable failure (no_face_found) from a recoverable
+ *   infra failure (timeout/api_error) read this; other callers can ignore it.
  */
 
 /**
@@ -92,17 +96,21 @@ export async function applyFaceSwapAndRestore({
       restored: false,
       targeted: false,
       outcome: 'skipped',
+      swapReason: null,
     };
   }
 
   let swapped = null;
   let targeted = false;
+  let swapReason = null;
+  let restoreCropRect = null;
 
   // Targeted path: only attempted when the caller provided the original scene
   // (so Gemini has a baseline to diff against) and the detect+target feature
   // is enabled. Any failure inside this block falls through to the full-frame
   // swap below — we never let a targeted-swap miss fail the whole pipeline.
-  if (originalScene?.buf && isTargetedFaceSwapAvailable()) {
+  const targetedAttempted = !!(originalScene?.buf && isTargetedFaceSwapAvailable());
+  if (targetedAttempted) {
     const targetedResult = await applyTargetedFaceSwap({
       modifiedImage: image,
       originalScene,
@@ -114,20 +122,39 @@ export async function applyFaceSwapAndRestore({
     if (targetedResult.ok && targetedResult.image?.buf) {
       swapped = targetedResult.image;
       targeted = true;
+      // Carry the crop forward so restoreFace can scope CodeFormer to the
+      // same region. Without this, restoration runs on the full frame and
+      // touches every other face in the scene.
+      restoreCropRect = targetedResult.cropRect ?? null;
     } else {
       log?.(reqId, 'log', 'postProcess.targetedSwap.fallback', {
         reason: targetedResult.reason,
+        swapReason: targetedResult.swapReason ?? null,
       });
+      if (targetedResult.reason === 'swap-failed' && targetedResult.swapReason) {
+        swapReason = targetedResult.swapReason;
+      }
     }
   }
 
   if (!swapped) {
-    swapped = await swapFace({
+    const swapResult = await swapFace({
       targetImage: image,
       sourceFace: selfie,
       reqId,
       log,
     });
+    if (swapResult?.image?.buf) {
+      swapped = swapResult.image;
+      swapReason = null;
+    } else {
+      // Prefer the full-frame reason when present. The targeted reason from
+      // an earlier attempt is only useful if full-frame wasn't attempted, and
+      // full-frame is the more authoritative signal anyway (same selfie,
+      // larger target region — if it still says no_face_found, that's the
+      // answer).
+      swapReason = swapResult?.reason ?? swapReason ?? 'no_output';
+    }
   }
 
   if (!swapped) {
@@ -139,6 +166,7 @@ export async function applyFaceSwapAndRestore({
       restored: false,
       targeted: false,
       outcome: 'no-swap',
+      swapReason,
     };
   }
 
@@ -151,10 +179,47 @@ export async function applyFaceSwapAndRestore({
       restored: false,
       targeted,
       outcome: 'no-restore',
+      swapReason: null,
     };
   }
 
-  const restored = await restoreFace({ image: swapped, reqId, log });
+  // If targeted swap was attempted but fell back to full-frame, we cannot
+  // scope CodeFormer to a region of interest. Running it full-frame would
+  // detect every face in the scene and "restore" each one — which manifests
+  // as visible identity drift on existing workers in multi-person scenes
+  // (the failure mode reported on coffee-break run JMWZ6tDz: bbox detection
+  // returned a malformed 5-element array, fell back to full-frame swap, then
+  // restore touched all four background workers).
+  //
+  // The targeted-attempted but not-targeted state is the precise signal that
+  // (a) the caller has reason to expect multiple faces in the scene, and
+  // (b) we couldn't isolate the new one. Skipping restore here trades a bit
+  // of InsightFace smoothness on the swapped face for guaranteed
+  // non-interference with everyone else. face-swap-only flows do not pass
+  // `originalScene` and are unaffected — full-frame restore there is correct
+  // because the scene's primary face IS the swap target.
+  if (targetedAttempted && !targeted) {
+    log?.(reqId, 'log', 'postProcess.restore.skipUnscoped', {
+      reason: 'targeted-fallback',
+    });
+    return {
+      image: swapped,
+      swappedImage: swapped,
+      restoredImage: null,
+      swapped: true,
+      restored: false,
+      targeted,
+      outcome: 'no-restore',
+      swapReason: null,
+    };
+  }
+
+  const restored = await restoreFace({
+    image: swapped,
+    cropRect: restoreCropRect,
+    reqId,
+    log,
+  });
   if (!restored) {
     return {
       image: swapped,
@@ -164,6 +229,7 @@ export async function applyFaceSwapAndRestore({
       restored: false,
       targeted,
       outcome: 'no-restore',
+      swapReason: null,
     };
   }
 
@@ -175,5 +241,6 @@ export async function applyFaceSwapAndRestore({
     restored: true,
     targeted,
     outcome: 'ok',
+    swapReason: null,
   };
 }

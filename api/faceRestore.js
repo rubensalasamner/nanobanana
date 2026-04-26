@@ -15,6 +15,8 @@
 
 import Replicate from 'replicate';
 
+import { compositeIntoRegion, extractCrop, isValidCropRect } from './cropComposite.js';
+
 const DEFAULT_FACE_RESTORE_MODEL =
   'sczhou/codeformer:cc4956dd26fa5a7185d5660cc9100fab1b8070a1d1654a8bb5eb6d443b020bb2';
 const DEFAULT_FIDELITY = 0.7;
@@ -95,7 +97,32 @@ function withTimeout(promise, ms, onTimeoutError) {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
-export async function restoreFace({ image, reqId, log, modelRef }) {
+/**
+ * Run CodeFormer over the input image. When `cropRect` is provided, the
+ * restoration is scoped to that region only: we crop the rect, send only the
+ * crop to CodeFormer, then composite the restored crop back into the original
+ * image with a feathered alpha edge.
+ *
+ * Why scoped restoration matters: CodeFormer detects every face in its input
+ * and restores all of them. In multi-person Boliden scenes that means every
+ * existing worker also gets re-rendered, producing visible identity drift
+ * (the "manipulating multiple faces" artifact reported on water-samples and
+ * meeting-at-the-mill). Passing `cropRect` from the targeted face-swap step
+ * confines CodeFormer to the only face we actually changed.
+ *
+ * Without `cropRect` the function preserves its original full-frame
+ * behaviour, which is the correct fallback when the swap was a full-frame
+ * swap (no targeted bbox was found).
+ *
+ * @param {object} args
+ * @param {{mime:string,buf:Buffer}} args.image
+ * @param {{left:number,top:number,width:number,height:number}|null} [args.cropRect]
+ * @param {string} args.reqId
+ * @param {Function} args.log
+ * @param {string} [args.modelRef]
+ * @returns {Promise<{mime:string,buf:Buffer}|null>}
+ */
+export async function restoreFace({ image, cropRect = null, reqId, log, modelRef }) {
   if (!isFaceRestoreEnabled()) {
     log?.(reqId, 'log', 'faceRestore.skip.disabled');
     return null;
@@ -105,11 +132,30 @@ export async function restoreFace({ image, reqId, log, modelRef }) {
     return null;
   }
 
+  const scoped = cropRect != null && isValidCropRect(cropRect);
+  if (cropRect != null && !scoped) {
+    log?.(reqId, 'warn', 'faceRestore.cropRect.invalid', { cropRect });
+  }
+
+  let restoreInputImage = image;
+  if (scoped) {
+    try {
+      const cropBuf = await extractCrop({ image, cropRect });
+      restoreInputImage = { mime: 'image/png', buf: cropBuf };
+    } catch (err) {
+      log?.(reqId, 'warn', 'faceRestore.crop.fail', {
+        message: err?.message,
+        cropRect,
+      });
+      restoreInputImage = image;
+    }
+  }
+
   const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
   const model = modelRef || resolveFaceRestoreModel();
   const fidelity = resolveCodeformerFidelity();
   const input = {
-    image: toDataUri(image),
+    image: toDataUri(restoreInputImage),
     codeformer_fidelity: fidelity,
     // Leave Gemini's rendered background alone — we only want to restore the
     // swapped face region, not re-grade the whole scene.
@@ -125,8 +171,8 @@ export async function restoreFace({ image, reqId, log, modelRef }) {
       RESTORE_TIMEOUT_MS,
       () => Object.assign(new Error('face-restore timeout'), { status: 'timeout' })
     );
-    const result = await fetchOutputAsBuffer(output);
-    if (!result) {
+    const restoredCrop = await fetchOutputAsBuffer(output);
+    if (!restoredCrop) {
       log?.(reqId, 'warn', 'faceRestore.noOutput', {
         ms: Date.now() - start,
         outputType: Array.isArray(output) ? 'array' : typeof output,
@@ -139,13 +185,42 @@ export async function restoreFace({ image, reqId, log, modelRef }) {
       });
       return null;
     }
+
+    if (!scoped || restoreInputImage === image) {
+      log?.(reqId, 'log', 'faceRestore.ok', {
+        ms: Date.now() - start,
+        outBytes: restoredCrop.buf.length,
+        outMime: restoredCrop.mime,
+        fidelity,
+        scoped: false,
+      });
+      return restoredCrop;
+    }
+
+    let composed;
+    try {
+      composed = await compositeIntoRegion({
+        base: image,
+        replacement: restoredCrop.buf,
+        cropRect,
+      });
+    } catch (err) {
+      log?.(reqId, 'error', 'faceRestore.composite.fail', {
+        message: err?.message,
+        cropRect,
+      });
+      return null;
+    }
+
     log?.(reqId, 'log', 'faceRestore.ok', {
       ms: Date.now() - start,
-      outBytes: result.buf.length,
-      outMime: result.mime,
+      outBytes: composed.length,
+      outMime: 'image/png',
       fidelity,
+      scoped: true,
+      cropRect,
     });
-    return result;
+    return { mime: 'image/png', buf: composed };
   } catch (err) {
     log?.(reqId, 'error', 'faceRestore.fail', {
       message: err?.message,

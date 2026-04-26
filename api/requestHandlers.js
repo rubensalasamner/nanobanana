@@ -30,7 +30,9 @@ import {
 import { describePersonAppearance } from '../public/shared/boliden/identity.js';
 
 import { runGeminiEdit } from './geminiClient.js';
+import { normalizeImage } from './normalizeImage.js';
 import { runStrategyWithFallback, selectStrategy } from './strategies/index.js';
+import { NO_FACE_FOUND_MESSAGE } from './strategies/types.js';
 
 export const MAX_UPLOAD_BYTES = 4.3 * 1024 * 1024;
 export const ONE_HOUR_MS = 60 * 60 * 1000;
@@ -127,13 +129,24 @@ export async function loadPublicImageSafe(publicDir, relativePath, log) {
   return null;
 }
 
+/**
+ * Wraps the Gemini identity-description call. Returns the structured result
+ * (`{ brief, faceDetected, raw }`) so callers can both consume the brief AND
+ * branch on the face-presence flag without paying for a second Gemini call.
+ *
+ * @returns {Promise<import('../public/shared/boliden/identity.js').DescribeResult>}
+ */
 export async function describePersonBrief(fileMime, fileBuf, reqId, log, apiKey) {
   const ai = new GoogleGenAI({ apiKey: apiKey || process.env.GEMINI_API_KEY });
   return describePersonAppearance({
     ai,
     fileMime,
     fileBuf,
-    onSuccess: (text) => log(reqId, 'log', 'describe.ok', { descriptionLength: text.length }),
+    onSuccess: (parsed) =>
+      log(reqId, 'log', 'describe.ok', {
+        descriptionLength: parsed.brief?.length ?? 0,
+        faceDetected: parsed.faceDetected,
+      }),
     onEmpty: () => log(reqId, 'warn', 'describe.empty'),
     onError: (err) => log(reqId, 'warn', 'describe.failed', { error: String(err?.message || err) }),
   });
@@ -269,13 +282,12 @@ async function buildStrategyContext({
   geminiApiKey,
   reqId,
   log,
+  personBrief,
 }) {
   const company = resolveCompanyId(String(fields.company ?? ''));
   const sceneId = String(fields.sceneId ?? '').trim() || null;
   const originalPrompt = String(fields.prompt ?? '');
   const clientMode = fields.mode === 'mobile' ? 'mobile' : 'booth';
-  const pipelineRaw = String(fields.pipeline ?? '').trim().toLowerCase();
-  const pipeline = pipelineRaw === 'swap-only' ? 'swap-only' : null;
 
   const clientAspectId = resolveOutputAspectId(fields.aspect);
   const scene =
@@ -285,11 +297,6 @@ async function buildStrategyContext({
     : clientAspectId;
   const aspectPreset = getOutputAspectPreset(outputAspectId);
   const aspectOverridden = outputAspectId !== clientAspectId;
-
-  const personBrief =
-    company === COMPANY_IDS.BOLIDEN
-      ? await describePersonBrief(fileMime, fileBuf, reqId, log, geminiApiKey)
-      : null;
 
   const sceneImageBuf = scene
     ? await loadPublicImageSafe(publicDir, scene.imagePath, (level, msg, meta) =>
@@ -305,7 +312,6 @@ async function buildStrategyContext({
     sceneId,
     scene,
     clientMode,
-    pipeline,
     originalPrompt,
     personBrief,
     aspectPreset,
@@ -355,14 +361,58 @@ export async function runEditAndSharePipeline({
     return { ok: false, status: 400, body: { error: 'Missing sceneId for boliden' } };
   }
 
+  // Normalize the selfie once, at the edge: apply EXIF rotation to pixels and
+  // re-encode to JPEG. Downstream consumers (Gemini describe, Gemini compose,
+  // Replicate face-swap, sharp crops) then all see the same upright, tag-free
+  // bytes. Phone uploads are the primary reason: many arrive with
+  // Orientation != 1 and display correctly in browsers but fail face
+  // detection in InsightFace (the backend of cdingram/face-swap).
+  const normalized = await normalizeImage({
+    buf: fileBuf,
+    mime: fileMime,
+    reqId,
+    log,
+    label: 'selfie',
+  });
+  const normalizedBuf = normalized.buf ?? fileBuf;
+  const normalizedMime = normalized.mime ?? fileMime;
+
+  // Describe the selfie up-front for Boliden requests. The same call is the
+  // identity brief AND the face-presence pre-check (see identity.js). A clear
+  // `faceDetected: false` short-circuits the pipeline with 422 before any
+  // strategy runs — saves ~25 s and one Replicate prediction per request
+  // that would otherwise hit `no_face_found` deep in the swap step.
+  const describeResult =
+    company === COMPANY_IDS.BOLIDEN
+      ? await describePersonBrief(normalizedMime, normalizedBuf, reqId, log, geminiApiKey)
+      : null;
+
+  if (describeResult?.faceDetected === false) {
+    log(reqId, 'warn', 'selfie.faceDetect.absent', {
+      via: 'describePersonAppearance',
+    });
+    return {
+      ok: false,
+      status: 422,
+      body: {
+        error: NO_FACE_FOUND_MESSAGE,
+        reason: 'no_face_found',
+        detectedAt: 'pre-check',
+        company,
+        sceneId,
+      },
+    };
+  }
+
   const { ctx, clientAspectId, aspectOverridden } = await buildStrategyContext({
     fields,
-    fileBuf,
-    fileMime,
+    fileBuf: normalizedBuf,
+    fileMime: normalizedMime,
     publicDir,
     geminiApiKey,
     reqId,
     log,
+    personBrief: describeResult?.brief ?? null,
   });
 
   if (company === COMPANY_IDS.BOLIDEN && sceneId && !ctx.scene) {
@@ -401,7 +451,7 @@ export async function runEditAndSharePipeline({
     clientMode,
     company,
     sceneId,
-    pipeline: ctx.pipeline,
+    primaryFace: ctx.scene?.primaryFace?.strategy ?? null,
     outputAspect: ctx.aspectPreset.id,
     clientAspect: clientAspectId,
     aspectOverridden,
@@ -422,6 +472,20 @@ export async function runEditAndSharePipeline({
   }
 
   const result = await runStrategyWithFallback(ctx);
+
+  if (result?.fatalReason) {
+    return {
+      ok: false,
+      status: 422,
+      body: {
+        error: result.fatalMessage || 'Generation failed.',
+        reason: result.fatalReason,
+        company,
+        sceneId,
+      },
+    };
+  }
+
   if (!result?.image) {
     return {
       ok: false,

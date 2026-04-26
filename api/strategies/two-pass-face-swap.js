@@ -46,6 +46,8 @@ import { runGeminiEdit } from '../geminiClient.js';
 import { isFaceSwapAvailable } from '../faceSwap.js';
 import { applyFaceSwapAndRestore } from '../postProcessFace.js';
 
+import { NO_FACE_FOUND_MESSAGE } from './types.js';
+
 /** @type {import('./types.js').GenerationStrategy} */
 export const twoPassFaceSwapStrategy = {
   name: 'two-pass-face-swap',
@@ -115,13 +117,28 @@ export const twoPassFaceSwapStrategy = {
     });
 
     if (post.outcome === 'no-swap') {
+      if (post.swapReason === 'no_face_found') {
+        // Fatal: InsightFace couldn't detect a face in either the selfie or
+        // the Pass 1 composite. Retrying with single-pass-gemini would use
+        // the same selfie and hit the same failure. Surface a user-visible
+        // error instead of silently serving the un-swapped Pass 1 image
+        // (that's the degraded `pass1-only` UX we're replacing).
+        ctx.log(ctx.reqId, 'warn', 'strategy.twoPass.pass2.fatal', {
+          reason: 'no_face_found',
+        });
+        return {
+          fatalReason: 'no_face_found',
+          fatalMessage: NO_FACE_FOUND_MESSAGE,
+        };
+      }
       ctx.log(ctx.reqId, 'warn', 'strategy.twoPass.pass2.degraded', {
         reason: 'face-swap returned null; using pass1 image',
+        swapReason: post.swapReason ?? null,
       });
       return {
         image: pass1Image,
         strategyName: `${this.name}:pass1-only`,
-        debug: { pass1Only: true },
+        debug: { pass1Only: true, swapReason: post.swapReason ?? null },
       };
     }
 

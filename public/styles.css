@@ -333,6 +333,16 @@ body[data-company='boliden'][data-mode='mobile'] .style-loading-line {
   font-weight: 400;
 }
 
+.result-generate-timing {
+  margin: -28px auto 28px;
+  max-width: min(520px, 92vw);
+  padding: 0 12px;
+  font-size: clamp(15px, 2vw, 18px);
+  line-height: 1.35;
+  color: #5f6368;
+  text-align: center;
+}
+
 body[data-company='boliden'][data-mode='mobile'] .camera-title,
 body[data-company='boliden'][data-mode='mobile'] .style-title,
 body[data-company='boliden'][data-mode='mobile'] .result-title,
@@ -340,6 +350,10 @@ body[data-company='boliden'][data-mode='mobile'] .share-title,
 body[data-company='boliden'][data-mode='mobile'] .welcome-text,
 body[data-company='boliden'][data-mode='mobile'] .printing-text {
   color: var(--fg);
+}
+
+body[data-company='boliden'][data-mode='mobile'] .result-generate-timing {
+  color: var(--muted);
 }
 
 body[data-company='boliden'][data-mode='mobile'] .camera-title {
@@ -669,7 +683,9 @@ body[data-company='boliden'][data-mode='mobile'] button.primary {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--fg);
-  box-shadow: 0 8px 16px rgba(129, 164, 200, 0.28);
+  box-shadow:
+    0 6px 12px rgba(129, 164, 200, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 body[data-company='boliden'][data-mode='mobile'] .pill-btn.outline {
