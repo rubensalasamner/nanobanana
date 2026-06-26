@@ -557,29 +557,10 @@ body[data-company='boliden'][data-mode='mobile'] .style-card {
     clip-path: none !important;
     padding: 0 !important;
   }
+  /* The white Gemini lockup is invisible on white paper; the black
+     "Powered by Google Gemini" wordmark in the bottom margin replaces it. */
   .result-stage .google-logo-overlay {
-    display: block !important;
-    position: absolute !important;
-    bottom: 40px !important;
-    left: 50% !important;
-    right: auto !important;
-    top: auto !important;
-    transform: translateX(-50%) !important;
-    width: 900px !important;
-    height: auto !important;
-    max-width: 900px !important;
-    max-height: 900px !important;
-    z-index: 21 !important;
-    pointer-events: none !important;
-    object-fit: contain !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    box-sizing: border-box !important;
-    background: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
-    clip-path: none !important;
-    overflow: visible !important;
+    display: none !important;
   }
   .result-container {
     overflow: visible !important;

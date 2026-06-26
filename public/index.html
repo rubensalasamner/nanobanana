@@ -73,15 +73,15 @@
         align-items: center;
         width: 100%;
         height: 100%;
-        justify-content: center;
+        justify-content: space-between; /* push logos into the top/bottom white space */
       }
       .stage,
       .result-stage {
         /* Responsive sizing - adapts to paper size */
-        width: 80%; /* Use 80% of available width - reduced to leave room for logo */
-        height: 80%; /* Use 80% of available height - reduced to leave room for logo */
-        max-width: 80%;
-        max-height: 80%;
+        width: 88%; /* Use most of the width, leaving room for white margins */
+        height: auto;
+        max-width: 88%;
+        max-height: 74%; /* Leave room for the wordmarks above and below */
         aspect-ratio: 1 / 1; /* Maintain square (1:1) ratio */
         overflow: visible !important; /* Allow logo to extend beyond container */
         position: relative !important;
@@ -94,13 +94,24 @@
         border-radius: 0;
         background: #fff;
       }
+      /* Hide the on-screen Gemini overlay when printing — the black wordmark
+         below replaces it so it stays legible on white paper. */
+      .result-stage .google-logo-overlay {
+        display: none !important;
+      }
       .print-logo {
         display: block !important;
-        width: 40%; /* Much larger logo */
-        max-width: 4in; /* Larger max size */
+        width: 70%;
+        max-width: 5in;
         height: auto;
-        margin-top: 2%; /* More spacing */
-        opacity: 0.8;
+        object-fit: contain;
+        flex: 0 0 auto;
+      }
+      .print-logo--top {
+        margin-bottom: 4%;
+      }
+      .print-logo--bottom {
+        margin-top: 4%;
       }
       video,
       canvas {
@@ -173,6 +184,11 @@
           class="result-generate-timing hidden"
           aria-live="polite"
         ></p>
+        <img
+          src="./assets/images/pandora partner day.svg"
+          alt="Pandora Partner Day"
+          class="print-logo print-logo--top"
+        />
         <div class="result-stage">
           <img
             id="resultPhoto"
@@ -186,6 +202,11 @@
             class="google-logo-overlay"
           />
         </div>
+        <img
+          src="./assets/images/powered by Google Gemini.svg"
+          alt="Powered by Google Gemini"
+          class="print-logo print-logo--bottom"
+        />
         <div class="result-actions">
           <button
             id="btnChangeStyle"
